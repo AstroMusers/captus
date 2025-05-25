@@ -4,6 +4,6 @@
 `captus` uses the N-body integrator [Rebound](https://github.com/hannorein/rebound) and binary evolution code [COMPAS](https://compas.science/).
 
 
-# Acknowledgement
+# Acknowledgements
 
 This research was supported by the National Aeronautics and Space Administration (NASA) under grant number 80NSSC24K0233 issued by the Astrophysics Division of the Science Mission Directorate (SMD) and the McDonnell Center for the Space Sciences at Washington University in St. Louis.
