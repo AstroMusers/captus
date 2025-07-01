@@ -1,24 +1,14 @@
-import rebound
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
-import os
 import datetime
-from astropy.table import Table
-import logging
-import pandas as pd
 from astropy import units as u
 from matplotlib.ticker import FuncFormatter, MultipleLocator, ScalarFormatter,LogFormatter, LogLocator
-
-from matplotlib import ticker
-import time
-from operator import itemgetter
-from itertools import groupby
-import corner
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.plotting_utils import *
 
-
-import sys
 s = datetime.datetime.now()
 mode1 = 'Mass_Variation'
 mode2 = 'LBImpB_Variation'
@@ -34,71 +24,7 @@ if not os.path.exists(f'/data/a.saricaoglu/repo/COMPAS/Plots/Capture/{str(s.strf
     os.makedirs(f'/data/a.saricaoglu/repo/COMPAS/Plots/Capture/{str(s.strftime("%m.%d"))}/{current_time}/{mode}/') 
 directoryp = f'/data/a.saricaoglu/repo/COMPAS/Plots/Capture/{str(s.strftime("%m.%d"))}/{current_time}/{mode}/' 
 
-def advanced_stats(window, std_thresh, grad_thresh, SA, T):
-    if SA.dtype.byteorder == '>':  # Big-endian
-        SA = SA.byteswap().newbyteorder()
 
-    rolling_std = pd.Series(SA).rolling(window=window, center=True).std()
-    grad = np.abs(np.gradient(SA, T))
-    
-    stable_mask = (rolling_std < std_thresh) & (grad < grad_thresh)
-    return stable_mask
-
-
-def find_longest_stable(stable_mask, SA, T):
-    stable_indices = np.where(stable_mask)[0]
-
-    # Group into contiguous stable segments
-    segments = []
-    for k, g in groupby(enumerate(stable_indices), lambda x: x[0] - x[1]):
-        group = list(map(itemgetter(1), g))
-        segments.append(group)
-
-    if not segments:
-        return None, None, None, None  # no stable region found
-
-    # Find the longest one
-    longest_segment = max(segments, key=len)
-    longest_mask = np.zeros_like(SA, dtype=bool)
-    longest_mask[longest_segment] = True
-
-    # Stats
-    start_time = T[longest_segment[0]]
-    end_time = T[longest_segment[-1]]
-    mean_a = np.mean(SA[longest_segment])
-
-    return longest_mask, mean_a, start_time, end_time
-
-def get_stable_regions(stable_mask, T):
-    """
-    Analyze stable mask to find all stable regions, their durations, and stats.
-    
-    Parameters:
-        stable_mask: boolean array, True where signal is stable
-        T: time array (same length)
-
-    Returns:
-        total_duration: sum of durations of all stable segments
-        longest_duration: duration of the longest stable segment
-        all_segments: list of (start_time, end_time, duration)
-    """
-    indices = np.where(stable_mask)[0]
-
-    if len(indices) == 0:
-        return 0, 0, []
-
-    segments = []
-    for k, g in groupby(enumerate(indices), lambda x: x[0]-x[1]):
-        group = list(map(itemgetter(1), g))
-        start, end = group[0], group[-1]
-        duration = T[end] - T[start]
-        segments.append((T[start], T[end], duration))
-
-    durations = [d for _, _, d in segments]
-    total_duration = np.sum(durations)
-    longest_duration = np.max(durations)
-
-    return total_duration, longest_duration, segments
 primary_folder = f'04.21/1609/McVinfImpB_Variation/rebound_sim_mp_b.py_1609/'
 secondary_folder = '04.21/rebound_analysis_b_2007/McVinfImpB_Variation/rebound_analysis_b_general_.fits'
 
@@ -528,6 +454,14 @@ ax[1].set_xlabel('Eccentricity')
 # ax[1].set_ylabel('Number of systems')
 ax[1].set_xticks(bin_edges2)  # Set x-ticks at bin centers
 # Rotate x-tick labels for all subplots
+ax[0].xaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+ax[0].yaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+ax[1].xaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+ax[1].yaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+axins.xaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+axins2.xaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+axins.yaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
+axins2.yaxis.set_major_formatter(FuncFormatter(sci_notation_latex))
 ax[0].tick_params(axis='x', rotation=45)  # Rotate x-ticks by 45 degrees for the first subplot
 ax[1].tick_params(axis='x', rotation=45)  # Rotate x-ticks by 45 degrees for the second subplot
 fig.text(0.04, 0.5, "Number of Systems", va="center", rotation="vertical")
