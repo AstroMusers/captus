@@ -70,12 +70,12 @@ def get_stable_regions(stable_mask, T):
 
     return total_duration, longest_duration, segments
 
-def format_to_2sf(x, pos=None):
-    """Format a number to 2 significant figures for axis labels."""
+def format_to_1sf(x, pos=None):
+    """Format a number to 1 significant figure for axis labels."""
     if x == 0:
         return "0"
     else:
-        return f"{x:.2g}"
+        return f"{x:.1g}"
 
 def rescale_ticks(x, pos):
     """Rescale ticks to percentage format."""

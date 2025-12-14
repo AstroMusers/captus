@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling>=1.20.0", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "captus"
+dynamic = ["version"]
+description = "captus: pipeline to estimate the galactic abundance of primordial black holes captured by main sequence"
+authors = [
+  { name = "Aysu Ece Saricaoglu, AstroMusers" }
+]
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+
+keywords = ["astrophysics", "three body capture", "rebound"]
+
+# Core runtime dependencies (from requirements.txt, excluding pytest)
+dependencies = [
+  "numpy",
+  "matplotlib",
+  "astropy",
+  "pandas",
+  "rebound",
+  "scipy",
+]
+
+# If you need to depend on REBOUND from GitHub, prefer documenting installation steps
+# or using optional-dependencies with an extra that users can opt into.
+# Hatchling does not resolve VCS URLs in dependencies for PyPI publishing best practices.
+# You can still `pip install git+https://github.com/hannorein/rebound.git` separately.
+
+[project.optional-dependencies]
+dev = [
+  "pytest"
+]
+
+# Developer convenience: install rebound directly from the repo
+# (uses subdirectory install). This should not be used for PyPI releases.
+rebound = [
+  "rebound @ git+https://github.com/hannorein/rebound.git"
+]
+
+[tool.hatch.build]
+# Include the Python package directory
+include = [
+  "src/**"
+]
+
+[tool.hatch.build.targets.wheel]
+# Pure-Python wheel
+pure_python = true
+
+[tool.hatch.build.targets.sdist]
+# Default sdist behavior
+
+[tool.hatch.metadata]
+# Enable automatic package discovery within the top-level package directory
+allow-direct-references = true
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+# Use a regex with a named 'version' group for tags like 'v0.1.0'
+tag-pattern = "^v(?P<version>.*)$"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/_version.py"
+local_scheme = "node-and-date"

@@ -172,3 +172,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Output plots
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.svg
+
+# Output files
+*.npz

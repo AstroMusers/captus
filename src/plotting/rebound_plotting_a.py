@@ -31,10 +31,10 @@ if not os.path.exists(f'/data/a.saricaoglu/repo/COMPAS/Plots/Capture/{str(s.strf
     os.makedirs(f'/data/a.saricaoglu/repo/COMPAS/Plots/Capture/{str(s.strftime("%m.%d"))}/{current_time}/{mode}/') 
 directoryp = f'/data/a.saricaoglu/repo/COMPAS/Plots/Capture/{str(s.strftime("%m.%d"))}/{current_time}/{mode}/' 
 
-# primary_folder = '04.21/1823/LBImpB_Variation/rebound_sim_mp_a.py_1823/'
-# secondary_folder = '04.21/rebound_analysis_a.py_1839/LBImpB_Variation/rebound_analysis_a_general_.fits'
-primary_folder = '05.09/rebound_analysis_a_0212/LBImpB_Variation'
+primary_folder = '04.21/1823/LBImpB_Variation/rebound_sim_mp_a.py_1823/'
 secondary_folder = '04.21/rebound_analysis_a.py_1839/LBImpB_Variation/rebound_analysis_a_general_.fits'
+# primary_folder = '05.09/rebound_analysis_a_0212/LBImpB_Variation'
+# secondary_folder = '04.21/rebound_analysis_a.py_1839/LBImpB_Variation/rebound_analysis_a_general_.fits'
 runs = [f for f in os.listdir(directoryf + primary_folder) if ".fits" in f]
 # sims = [sim for sim in os.listdir(directoryf +secondary_folder) if "sys" in sim]
 
@@ -503,7 +503,7 @@ for axx in ax:
     # # Optional: control number of ticks
     # axx.yaxis.set_major_locator(LogLocator(base=10.0))
 
-    axx.xaxis.set_major_formatter(formatterx)
+    axx.xaxis.set_major_formatter(format_to_1sf)
 
 plt.tight_layout()
 plt.savefig(f"{directoryp}histogram_beta_lambda_b.png", dpi=300, bbox_inches='tight')

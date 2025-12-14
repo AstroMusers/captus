@@ -8,6 +8,10 @@ import sys
 import astropy.io.fits as fits
 from datetime import datetime
 import pandas as pd
+import matplotlib as mpl
+from matplotlib.font_manager import FontProperties
+import matplotlib.ticker as ticker
+
 
 plt.rcParams["axes.formatter.use_mathtext"]
 c = datetime.now()
@@ -28,6 +32,14 @@ if not os.path.exists(path+ "/Plots/" + mod +  str(c.strftime("%m.%d")+ "/" + cu
     os.makedirs(path + "/Plots/"  + mod +  str(c.strftime("%m.%d")+ "/" + current_time + "/") ) 
 directoryp = path + "/Plots/"  + mod +  str(c.strftime("%m.%d") + "/" + current_time + "/")  
 
+mpl.rc('font',family='DeJavu Serif')
+font = FontProperties(family='DeJavu Serif')
+plt.rcParams['savefig.dpi'] = 600  # Set the resolution for saved figures
+# Set the number of lines to plot and the colormap
+n_lines = 10
+cmap = mpl.colormaps['plasma']
+# Take colors at regular intervals spanning the colormap.
+colors = cmap(np.linspace(0, 1, n_lines))
 # with fits.open(pathToData) as hdul:
 #     data = hdul[1].data
 #     print(data.columns)
@@ -87,15 +99,16 @@ G = G * const.M_sun.value * 1/(const.c.value*const.R_sun.value)**3 # in 1/c^2
 # R_star = 2.73 * 1/const.c.value # in R_sun / c t0 0.68
 
 # V518 Persei
-# star = 'V518_Persei'
-# M_star =  0.47 # in M_sun 0.26-0.68
-# M_bh = 6.5 # in M_sun 3.6 to 9.5
-# R_star = M_star**0.8  * 1/const.c.value # in R_sun / c
+star = 'V518_Persei'
+M_star =  0.47 # in M_sun 0.26-0.68
+M_bh = 6.5 # in M_sun 3.6 to 9.5
+R_star = M_star**0.8  * 1/const.c.value # in R_sun / c
 
-star = 'GW200115'
-M_star =  1.25 # in M_sun 0.26-0.68
-M_bh = 7 # in M_sun 3.6 to 9.5
-R_star = 0.000015 * 1/const.c.value # in R_sun / c 
+# star = 'GW200115'
+# M_star =  1.25 # in M_sun 0.26-0.68
+# M_bh = 7 # in M_sun 3.6 to 9.5
+# R_star = 0.000015 * 1/const.c.value # in R_sun / c 
+
 gridsize = 100
 
 # print(R_star)
@@ -301,7 +314,7 @@ a = compute_semimajor_axis(M_bh, M_star, v_inf_values)
 #                       linestyles='--', alpha=0.5)
 plt.vlines(np.log10(M_bh), np.log10(v_inf_values[0]), np.log10(v_inf_values[-1]), color='red', linestyle='--', alpha=0.5)
 # Add labels to the contour lines
-plt.clabel(contour, inline=True, fontsize=8, fmt=lambda x: f"{x:.1E} AU")
+plt.clabel(contour, inline=True, fontsize=8, fmt=lambda x: f"{x:.1g} AU")
 # plt.contour(np.log10(m_pbh_values), np.log10(v_inf_values),(semaj_grid),
 #                         colors='blue', linewidths=0.8,  norm=plt.cm.colors.LogNorm(),
 #                         linestyles='--', alpha=0.5)
@@ -310,11 +323,8 @@ plt.clabel(contour, inline=True, fontsize=8, fmt=lambda x: f"{x:.1E} AU")
 # plt.clabel(contour2, inline=True, fontsize=8, fmt=lambda x: f"R_star {x:.1E} AU")
 plt.xlabel(r'log10($M_{PBH}$) [$M_\odot$]')
 plt.ylabel(r'$v_{\infty}$ [km/s]')
-# plt.text(0.2, 0.7, r'Prohibited', fontsize=10, ha='center', va='center', transform=plt.gca().transAxes)
+plt.text(0.2, 0.6, r'Prohibited', fontsize=10, ha='center', va='center', transform=plt.gca().transAxes)
 # plt.text(0.5, 0.6, r'(Capture without collision is not possible)', fontsize=10, ha='center', va='center', transform=plt.gca().transAxes)
-plt.yticks(np.log10(v_inf_values)[::10], [f'{x:.2f}' for x in (v_inf_valuess)[::10]])
-plt.yticks
-
-# plt.title('Capture cross-section as function of PBH mass and velocity')
+plt.yticks(np.log10(v_inf_values)[::10], [f'{x:.1g}' for x in (v_inf_valuess)[::10]])# plt.title('Capture cross-section as function of PBH mass and velocity')
 plt.savefig(directoryp + f'{star}_capture_cross_section_plus_semaj_grid.png',bbox_inches='tight')
 # plt.show()
