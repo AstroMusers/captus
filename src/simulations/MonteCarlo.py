@@ -5,7 +5,7 @@ import numpy as np
 from astropy import units as u
 import multiprocessing
 
-class Simulation:
+class MonteCarloSimulation:
 
     def __init__(self, system_param_dict):
         # Initialization code here
@@ -16,29 +16,43 @@ class Simulation:
 
         G = const.G.value  # Gravitational constant in m^3 kg^-1 s^-2
 
-        self.sys_par['muA'] = self.sys_par['mA'] * G
-        self.sys_par['muB'] = self.sys_par['mB'] * G
-        self.sys_par['muC'] = self.sys_par['mC'] * G
+        self.mA = self.sys_par['mA']
+        self.mB = self.sys_par['mB']
+        self.mC = self.sys_par['mC'] 
 
-        self.sys_par['rC'] = calcs.schwarzchild_radius(self.sys_par['mC'])
+        self.muA = self.mA * G
+        self.muB = self.mB * G
+        self.muC = self.mC * G
 
-        self.sys_par['areaB'] = np.pi * self.sys_par['rB']**2
+        self.aB = self.sys_par['aB']
+        self.rB = self.sys_par['rB']
 
-        self.sys_par['vEscape'] = calcs.v_esc(self.sys_par['muA'], self.sys_par['rAB'])
+        self.vBMag = self.sys_par['vB']
+        self.epsilon = self.sys_par['epsilon']
 
-        self.sys_par['potentialEnergy'] = calcs.potential_energy(self.sys_par['muA'], self.sys_par['rAB'], self.sys_par['muB'], self.sys_par['rClose'])
 
-        self.sys_par['rABVec'] = np.array([0.0, self.sys_par['rAB'], 0.0])
+        self.rC = calcs.schwarzchild_radius(self.mC)
 
-    def _save_mc_results(self, v, N):
+        self.areaB = np.pi * self.rB**2
+
+        self.vEscape = calcs.v_esc(self.muA, self.aB)
+        self.rClose = calcs.r_close(self.epsilon, self.mA, self.mB, self.aB)
+
+
+        self.potentialEnergy = calcs.potential_energy(self.muA, self.aB, self.muB, self.rClose)
+
+        self.rABVec = np.array([0.0, self.aB, 0.0])
+
+    def _save_mc_results(self,mc_results, N):
         # Code to save Monte Carlo results
         name = self.sys_par['name']
-        seed = self.sys_par['seed']
-        save_dir = f'../runs/{name}/Monte_Carlo_Results/N{N:.e0}'
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        results = self.mc_results
-        np.savez(f'{save_dir}/monte_carlo_results_v{v/1e3:.1f}_s{seed}.npz',
+        seed = self.sys_par['seed_base']
+        N_str = f"{int(N):.0e}"           # e.g., 100000 -> "1e5"
+        save_dir = f'../runs/{name}/Monte_Carlo_Results/N{N_str}'
+        os.makedirs(save_dir, exist_ok=True)
+        results = mc_results
+
+        np.savez(f'{save_dir}/monte_carlo_results_v{results["v_inf"]/1e3:.1f}_s{seed}.npz',
                  v_inf=results['v_inf'],
                  n_captured=results['n_captured'],
                  sigma_MC_m2=results['sigma_MC_m2'],
@@ -68,22 +82,16 @@ class Simulation:
         # phi_samples = rng.uniform(phi_limits[0], phi_limits[1], size=N)
 
         # Shared constants
-        muA = self.sys_par['muA']
-        muB = self.sys_par['muB']
-        rClose = self.sys_par['rClose']
-        vBMag = self.sys_par['vB']
-        rABVec = self.sys_par['rABVec']
-        potentialEnergy = self.sys_par['potentialEnergy']
-        b_max = rClose
+        b_max = self.rClose
         max_samples = sample_size
         n_captured = 0
         out_lambda, out_beta, out_b, out_phi = [], [], [], []
         out_a, out_e = [], []
 
         for lam, beta, b, phi in zip(lambda_samples, beta_samples, b_samples, phi_samples):
-            v1Mag = calcs.v_1_mag(v_inf, muA, muB, self.sys_par['rAB'], rClose)
+            v1Mag = calcs.v_1_mag(v_inf, self.muA, self.muB, self.aB, self.rClose)
             v1Vec = calcs.v_1_vec(v1Mag, lam, beta)
-            vBVec = calcs.v_B_vec(vBMag, lam)
+            vBVec = calcs.v_B_vec(self.vBMag, lam)
 
             v1primeVec = calcs.v_1_prime_vec(v1Vec, vBVec, lam, beta)
             v1primeMag = np.linalg.norm(v1primeVec)
@@ -91,19 +99,19 @@ class Simulation:
             if v1primeMag == 0:
                 continue
 
-            if b < self.sys_par['rB'] + self.sys_par['rC']:
+            if b < self.rB + self.rC:
                 continue
 
-            v2Vec = calcs.v_2_vec(v1primeVec, v1primeMag, vBVec, muB, b, phi)
+            v2Vec = calcs.v_2_vec(v1primeVec, v1primeMag, vBVec, self.muB, b, phi)
             v2Mag = calcs.v_2_mag(v2Vec)
 
-            E2_val = 0.5 * v2Mag**2 + potentialEnergy
+            E2_val = 0.5 * v2Mag**2 + self.potentialEnergy
 
-            if E2_val + (muB / rClose) < 0:
-                L2_val = calcs.L2(rABVec, v2Vec)
-                a_val, e_val = calcs.a_e(muA, E2_val, L2_val)
+            if E2_val + (self.muB / self.rClose) < 0:
+                L2_val = calcs.L2(self.rABVec, v2Vec)
+                a_val, e_val = calcs.a_e(self.muA, E2_val, L2_val)
 
-                if a_val > 0 and 0 <= e_val < 1 and n_captured < max_samples:
+                if a_val > 0 and 0 <= e_val < 1:
                     out_a.append(a_val)
                     out_e.append(e_val)
                     out_lambda.append(lam)
@@ -117,7 +125,7 @@ class Simulation:
 
         print(f"for v_inf={v_inf/1e3} km/s MC capture cross-section:", sigma_MC, "m^2")
         if 'areaB' in self.sys_par:
-            print("In units of B area:", sigma_MC / self.sys_par['areaB'])
+            print("In units of B area:", sigma_MC / self.areaB)
 
         # orbital element stats
         a_arr = np.array(out_a)
@@ -129,11 +137,11 @@ class Simulation:
         if e_arr.size:
             print("e: mean =", np.mean(e_arr), "std =", np.std(e_arr))
 
-        self.mc_results = {
+        mc_results = {
             'v_inf': v_inf,
             'n_captured': n_captured,
             'sigma_MC_m2': sigma_MC,
-            'sigma_MC_areaB': (sigma_MC / self.sys_par['areaB']) if 'areaB' in self.sys_par else None,
+            'sigma_MC_areaB': (sigma_MC / self.areaB),
             'a_au': a_au,
             'e': e_arr,
             'cap_lambda': np.array(out_lambda),
@@ -141,13 +149,17 @@ class Simulation:
             'cap_b': np.array(out_b),
             'cap_phi': np.array(out_phi),
         }
-        self._save_mc_results(v_inf, N)
+        self._save_mc_results(mc_results, N)
 
-        return self.get_mc_results()
+
+        return print(f'Results saved for v_inf={v_inf/1e3} km/s with N={N} trials.')
         
     def get_mc_results(self):
         return self.mc_results
     
     def get_system_params(self):
         return self.sys_par
+    
+
+        
     

@@ -16,6 +16,48 @@ def schwarzchild_radius(mass):
 
     return 2 * const.G.value * mass / const.c.value**2
 
+def semimajor_axis(period, mass1, mass2):
+    """Calculate the semi-major axis of a binary system.
+
+    Parameters:
+    period (float): Orbital period in seconds.
+    mass1 (float): Mass of the first body in kilograms.
+    mass2 (float): Mass of the second body in kilograms.
+
+    Returns:
+    float: Semi-major axis in meters.
+    """
+    G = const.G.value  # Gravitational constant in m^3 kg^-1 s^-2
+    return (G * (mass1 + mass2) * (period / (2 * pi))**2)**(1/3)
+
+def orbital_period(semimajor_axis, mass1, mass2):
+    """Calculate the orbital period of a binary system.
+
+    Parameters:
+    semimajor_axis (float): Semi-major axis in meters.
+    mass1 (float): Mass of the first body in kilograms.
+    mass2 (float): Mass of the second body in kilograms.
+
+    Returns:
+    float: Orbital period in seconds.
+    """
+    G = const.G.value  # Gravitational constant in m^3 kg^-1 s^-2
+    return 2 * pi * np.sqrt(semimajor_axis**3 / (G * (mass1 + mass2)))
+
+def hill_radius(semimajor_axis, mass1, mass2, eccentricity=0):
+    """Calculate the Hill radius of a body in a binary system.
+
+    Parameters:
+    semimajor_axis (float): Semi-major axis of the orbit in meters.
+    mass1 (float): Mass of the primary body in kilograms.
+    mass2 (float): Mass of the secondary body in kilograms.
+    eccentricity (float): Orbital eccentricity (default is 0 for circular orbits).
+
+    Returns:
+    float: Hill radius in meters.
+    """
+    return semimajor_axis * (1 - eccentricity) * (mass2 / (3 * (mass1 + mass2)))**(1/3)
+
 def area_of_circle(radius):
     """Calculate the area of a circle given its radius.
 

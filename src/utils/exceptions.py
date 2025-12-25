@@ -1,0 +1,8 @@
+class EnergyError(Exception): pass
+class EscapeError(Exception): pass
+class CollisionError(Exception): pass
+class RangeError(Exception): pass
+class MaxYearForBError(Exception): pass
+class InvalidPeriodError(Exception): pass
+class InvalidTimeStepError(Exception): pass
+class PlottingError(Exception): pass
