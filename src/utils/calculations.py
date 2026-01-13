@@ -1,7 +1,7 @@
 import astropy.constants as const
 from math import pi
 import numpy as np
-
+from numpy.polynomial.legendre import leggauss
 
 
 def schwarzchild_radius(mass):
@@ -670,4 +670,103 @@ def b_vector_general(b, v1prime_vec, phi):
     b_vec = b * (np.cos(phi)*e_b0 + np.sin(phi)*e_c)
     return b_vec
 
+def integrate_trapezoidal(x, y, max=None, min=None):
+    """
+    Perform trapezoidal integration.
 
+    Parameters
+    ----------
+    x : array-like
+        Independent variable values.
+    y : array-like
+        Dependent variable values.
+
+    Returns
+    -------
+    float
+        Integral of y with respect to x.
+    """
+    if max is not None:
+        mask = (np.asarray(x) <= max)
+        x = np.asarray(x)[mask]
+        y = np.asarray(y)[mask]
+    if min is not None:
+        mask = (np.asarray(x) >= min)
+        x = np.asarray(x)[mask]
+        y = np.asarray(y)[mask]
+    else:
+        x = np.asarray(x)
+        y = np.asarray(y)
+    integral = np.trapezoid(y, x)
+    return integral
+
+def gauss_legendre_integral(F, vmin, vmax, n_points=16):
+    # Nodes x in [-1, 1], weights w
+    x, w = leggauss(n_points)
+
+    # Map nodes to [vmin, vmax]
+    v = 0.5 * (vmax - vmin) * x + 0.5 * (vmax + vmin)
+
+    # Evaluate integrand at these v
+    F_vals = F(v)
+
+    # Jacobian factor dv/dx = (vmax - vmin)/2
+    return 0.5 * (vmax - vmin) * np.sum(w * F_vals)
+
+def dict_to_sorted_arrays(occ, key1, key2):
+    pairs = [
+        (d['v_inf_au_yr'], d[key])
+        for d in occ.values()
+        if d[key] > 0
+    ]
+    pairs.sort(key=lambda x: x[0])
+    v_arr  = np.array([p[0] for p in pairs])
+    F_arr  = np.array([p[1] for p in pairs])
+    return v_arr, F_arr
+
+def integral_from_grid(v_grid, F_grid, vmin, vmax, n_points=None):
+    if n_points is None:
+        n_points = len(v_grid)
+
+    def F_interp(v):
+        return np.interp(v, v_grid, F_grid)
+
+    return gauss_legendre_integral(F_interp, vmin=vmin, vmax=vmax, n_points=n_points)
+
+def integrate_gauss_legendre(x, y, n=16):
+    """
+    Integrate y(x) over x using Gauss-Legendre quadrature.
+
+    - x: 1D array of sample positions (monotonic not required; will be sorted)
+    - y: 1D array of function values at x
+    - n: number of quadrature points (typ. 8-64)
+
+    Implementation notes:
+    - We sort x and y together and drop NaNs.
+    - We linearly interpolate y(x) to evaluate at the Gauss-Legendre nodes.
+    - Interval is [xmin, xmax]. If less than 2 points, returns 0.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mask = np.isfinite(x) & np.isfinite(y)
+    x = x[mask]
+    y = y[mask]
+    if x.size < 2:
+        return 0.0
+    # Sort by x
+    order = np.argsort(x)
+    x = x[order]
+    y = y[order]
+
+    a = x[0]
+    b = x[-1]
+    # Get nodes and weights on [-1,1]
+    xi, wi = leggauss(n)
+    # Map nodes to [a,b]
+    xm = 0.5*(b + a)
+    xr = 0.5*(b - a)
+    x_nodes = xm + xr * xi
+    # Interpolate y at nodes
+    y_nodes = np.interp(x_nodes, x, y)
+    # Integral over [a,b]
+    return xr * np.sum(wi * y_nodes)

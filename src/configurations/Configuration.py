@@ -3,54 +3,56 @@ import numpy as np
 import src.utils.calculations as calc
 import astropy.constants as const
 from astropy import units as u
+import src.utils.misc as misc
 import os, sys
 
+REPO_ROOT = misc._resolve_repo_root()
+
 class Configuration:
-    def __init__(self, name, seed, config_file=None):
+    def __init__(self, name, seed, importance_sampling=False, config_file=None):
         # Load configuration from file
         self.name = name
         self.seed = seed
-        self.config_file = os.path.join(os.getcwd(), config_file) if config_file else None
-        self._set_system_params()
-        self._set_simulation_params()
+        self.config_file = os.path.join(REPO_ROOT, config_file) if config_file else None
+        self.importance_sampling = importance_sampling
+        self._set_params()
 
 
-    def _set_system_params(self):
+    def _set_params(self):
         # Set system parameters based on the configuration file
-        params = None
+        sys_params = None
+        sim_params = None
         if self.config_file:
             cfg = yaml.safe_load(open(self.config_file))
         else:
             if 'Sun' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(os.getcwd(), '../src/configurations/SunJupiter.yaml')))
+                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/configurations/SunJupiter.yaml')))
                 if 'lightPBH' in self.name:
-                    params = cfg['system_param_dict_lightPBH']
+                    sys_params = cfg['system_param_dict_lightPBH']
                 if 'massivePBH' in self.name:
-                    params = cfg['system_param_dict_massivePBH']
+                    sys_params = cfg['system_param_dict_massivePBH']
 
             if 'Cygnus' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(os.getcwd(), '../src/configurations/CygnusX1.yaml')))
+                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/configurations/CygnusX1.yaml')))
+
             if 'Intermediate' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(os.getcwd(), '../src/configurations/IntermediateBHStar.yaml')))
+                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/configurations/IntermediateBHStar.yaml')))
 
-        if params is None:
-            params = cfg['system_param_dict']
+        if sys_params is None:
+            sys_params = cfg['system_param_dict']
 
-        self.system_param_dict = params
-        self.system_param_dict['name'] = self.name
-        self.system_param_dict['seed_base'] = self.seed
-        self.vinf_params = cfg['v_inf_grid_params']  # default 300 km/s
+        sys_params['name'] = self.name
+        sys_params['seed_base'] = self.seed
+        self.system_param_dict = sys_params
+
+        sim_params = cfg['simulation_param_dict']
+        vinf_params = cfg['v_inf_grid_params']
+        sim_params['v_inf_grid'] = self._create_vinf_grid(vinf_params)
+        sim_params['importance_sampling'] = self.importance_sampling
+        self.simulation_param_dict = sim_params
 
     def set_system_param(self, key, value):
         self.system_param_dict[key] = value
-
-    def _set_simulation_params(self):
-        # Update system parameters with additional parameters
-        self.simulation_param_dict = {}
-        self.simulation_param_dict['trials'] = 10_000_000
-        self.simulation_param_dict['sample_size'] = 200
-        self.simulation_param_dict['e_lim'] = 0.95
-        self.simulation_param_dict['v_inf_grid'] = self._create_vinf_grid()
 
     def set_simulation_param(self, key, value):
         self.simulation_param_dict[key] = value
@@ -110,9 +112,44 @@ class Configuration:
         print(f'rClose/rHill: {rclose/r_hill}')
         print(f'Radius of C: {calc.schwarzchild_radius(mC)*u.m.to(u.au)} au')
 
-    def _create_vinf_grid(self):
-        v_inf_min = self.vinf_params['min']  # default 1 km/s
-        v_inf_max = self.vinf_params['max']  # default 300 km/s
-        samples = self.vinf_params['n']  # default 10
+    def _create_vinf_grid(self, vinf_params):
+        v_inf_min = vinf_params['min']  # default 1 km/s
+        v_inf_max = vinf_params['max']  # default 300 km/s
+        samples = vinf_params['n']  # default 10
         v_inf_grid = np.linspace(v_inf_min, v_inf_max, samples)
         return v_inf_grid
+    
+    def _set_save_dir(self, mc_dir=None, rebound_dir=None, plots_dir=None):
+        name = self.name
+        dir_mc = mc_dir if mc_dir else f'runs/{name}/Monte_Carlo_Results'
+        save_dir_mc = os.path.join(REPO_ROOT, dir_mc)
+        os.makedirs(save_dir_mc, exist_ok=True)
+        self.save_dir_mc = save_dir_mc
+
+        dir_rebound = rebound_dir if rebound_dir else f'runs/{name}/Rebound_Simulation_Results'
+        save_dir_rebound = os.path.join(REPO_ROOT, dir_rebound)
+        os.makedirs(save_dir_rebound, exist_ok=True)
+        self.save_dir_rebound = save_dir_rebound
+
+        dir_plots = plots_dir if plots_dir else f'plots/{name}'
+        save_dir_plots = os.path.join(REPO_ROOT, dir_plots)
+        os.makedirs(save_dir_plots, exist_ok=True)
+        self.save_dir_plots = save_dir_plots
+
+    def get_save_dir_mc(self):
+        if getattr(self, 'save_dir_mc', None) is None:
+            self._set_save_dir()
+        return self.save_dir_mc
+
+    def get_save_dir_rebound(self):
+        if getattr(self, 'save_dir_rebound', None) is None:
+            self._set_save_dir()
+        return self.save_dir_rebound
+    
+    def get_save_dir_plots(self):
+        if getattr(self, 'save_dir_plots', None) is None:
+            self._set_save_dir()
+        return self.save_dir_plots
+    
+    def set_save_dir(self, mc_dir=None, rebound_dir=None, plots_dir=None):
+        self._set_save_dir(mc_dir, rebound_dir, plots_dir)

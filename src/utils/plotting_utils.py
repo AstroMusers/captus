@@ -2,8 +2,18 @@ import numpy as np
 import pandas as pd
 from itertools import groupby
 from operator import itemgetter
+import re
 
-
+def latex_label_key(s: str) -> str:
+    # extract the first {...} group; fallback to cleaned text
+    m = re.search(r"\{([^}]+)\}", s)
+    if m:
+        return m.group(1).strip()
+    # fallback: remove latex and units, normalize
+    s = re.sub(r"\$|\\[A-Za-z]+|\[.*?\]", "", s)  # drop $ \sigma \Gamma and units [...]
+    s = s.replace("{", "").replace("}", "")
+    s = s.strip()
+    return s
 def advanced_stats(window, std_thresh, grad_thresh, SA, T):
     if SA.dtype.byteorder == '>':  # Big-endian
         SA = SA.byteswap().newbyteorder()

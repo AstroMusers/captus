@@ -1,0 +1,23 @@
+---
+system_param_dict:
+  mA: 7.158275534512984e+35      # float
+  mB: 2.187250857767856e+32      # float
+  mC: 1.988409870698051e+30      # float
+  aB: 5983914828000.0        # float
+  rB: 171142200000.0         # float
+  vB: 2825623.96763961                 # float
+  eB: 0                    # float
+  iB: 0       # float
+  epsilon: 0.11626902801921635  # float
+  seed_base: 42                 # int
+v_inf_grid_params: 
+  min: 1000                     # int -> float later if you need
+  max: 544000
+  n: 20
+simulation_param_dict:
+  trials: 10000000        # int
+  max_trials: 1000000000   # int
+  sample_size: 200        # int
+  max_e: 1.00            # float
+  vDM: 220000.0          # float
+

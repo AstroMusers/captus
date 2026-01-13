@@ -21,7 +21,7 @@ class OrbitalSimulation:
         self.configuration = configuration
         # Expect SI; convert to ('AU','yr','Msun') as needed
         self._set_system()
-        self._print_script_version()
+        # self._print_script_version()
 
     def _set_system(self):
 
@@ -79,7 +79,7 @@ class OrbitalSimulation:
     
     def _print_script_version(self):
         version = get_script_version()
-        print(f"Running Rebound_v2.py, last modified on {version}")
+        print(f"Running Rebound_v3.py, last modified on {version}")
     
 
     def run_orbital_integration(self, i, v_inf, lambda1, beta, phi, b, a_c, e_c, check_exists=True):
@@ -184,7 +184,7 @@ class OrbitalSimulation:
 
         snap_rate = 20
         snap_interval = sim.dt * snap_rate
-        t_end = int(1e6) * abs(P_C)
+        t_end = int(1e7)  # years
         t_min = int(1e3) * abs(P_C)
         t_max = int(1e8) 
         # aC_max = aB * 40
@@ -240,15 +240,15 @@ class OrbitalSimulation:
         flag = None
         E_initial = sim.energy()
         ops = None
-        yr = 0
+        int_start = datetime.datetime.now()
         try:
             # ops = rebound.OrbitPlotSet(sim, slices=True, unitlabel="[AU]", color=["black", "red"])
             # self._save_figure(ops, i, v_inf_kms, 'initial', sim.t)
             j = 0
-            while (sim.t < t_end) and (sim.t < t_max):
+            while (sim.t < t_end):
                 P_C = sim.particles[2].orbit(primary=sim.particles[0]).P
                 P_B = sim.particles[1].orbit(primary=sim.particles[0]).P
-                if sim.dt > np.min([abs(P_C), abs(P_B)]) * 0.05:
+                if (sim.dt > np.min([abs(P_C), abs(P_B)]) * 0.05) or (sim.dt < np.min([abs(P_C), abs(P_B)]) * 0.03):
                     sim.dt = np.min([abs(P_C), abs(P_B)]) * 0.05
                     # print(f"Adjusted time step: {sim.dt}")
                 j += booster
@@ -291,7 +291,9 @@ class OrbitalSimulation:
                 #     if p.last_collision == sim.t:
                 #         flag = 'collision'
                 #         raise CollisionError(f"Collision detected at time {sim.t}")
-                    
+                int_current = datetime.datetime.now()
+                elapsed_int = (int_current - int_start).total_seconds()
+
                 if error > 1e-5:
                     flag = 'energy_conservation'
                     raise exc.EnergyError(f"Error in energy conservation: {error}")
@@ -303,9 +305,9 @@ class OrbitalSimulation:
                     flag = 'escape_B'
                     raise exc.EscapeError(f"Particle B is free: E_b: {E_b_cond}, rAB: {np.abs(sim.particles[1] ** sim.particles[0])}")
 
-                if sim.t > t_max:
+                if elapsed_int > 1800:  # 30 minutes
                     flag = 'time_exceeded'
-                    raise exc.MaxYearForBError(f"Maximum time for B exceeded: {sim.t} > {t_max}")
+                    raise exc.MaxIntegrationTimeError(f"Maximum time for integration exceeded: {elapsed_int} > 1800 seconds")
 
 
 
@@ -348,8 +350,8 @@ class OrbitalSimulation:
                 print(f"Collision detected in system {i} at time {sim.t}, but couldn't identify particles")
             
             print(f"Collision during integration: {e}, Simulation for system {i} at step {j}.")
-            
-        except (exc.PlottingError, exc.EnergyError, exc.EscapeError, exc.MaxYearForBError) as e:
+
+        except (exc.PlottingError, exc.EnergyError, exc.EscapeError, exc.MaxIntegrationTimeError) as e:
             print(f"Error during integration: {e}, Simulation failed for system {i}, at step {j}. Script continues...")
 
         # E_final = sim.energy()

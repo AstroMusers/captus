@@ -8,10 +8,10 @@ from numpy.random import default_rng, SeedSequence, PCG64, Generator
 
 class MonteCarloSimulation:
 
-    def __init__(self, system_param_dict, rng):
+    def __init__(self, configuration, rng):
         # Initialization code here
-        self.sys_par = system_param_dict
-        self.importance_sampling = False
+        self.sys_par = configuration.get_system_param(all=True)
+        self.configuration = configuration
         self.rng = rng
         self._set_system()
 
@@ -53,13 +53,13 @@ class MonteCarloSimulation:
 
         self.rABVec = np.array([0.0, self.aB, 0.0])
 
+        self._set_importance_sampling()
+
     def _save_mc_results(self,mc_results, N):
         # Code to save Monte Carlo results
         name = self.sys_par['name']
         seed = self.sys_par['seed_base']
-        N_str = f"{int(N):.0e}"           # e.g., 100000 -> "1e5"
-        save_dir = f'../runs/{name}/Monte_Carlo_Results/N{N_str}'
-        os.makedirs(save_dir, exist_ok=True)
+        save_dir = self.configuration.get_save_dir_mc()
         results = mc_results
 
         np.savez(f'{save_dir}/monte_carlo_results_v{results["v_inf"]/1e3:.1f}_s{seed}.npz',
@@ -76,20 +76,29 @@ class MonteCarloSimulation:
                  epsilon=results['epsilon'],
                  sample_number=results['sample_number'])
 
-    def set_importance_sampling(self, quota, e_lim=None, max_trials=1_000_000_000):
-        self.importance_sampling = True
-        self.quota = quota
+    def _set_importance_sampling(self):
+        self.importance_sampling = self.configuration.get_simulation_param('importance_sampling', all=False)
+        self.sample_size = self.configuration.get_simulation_param('sample_size', all=False)
+        self.trials = self.configuration.get_simulation_param('trials', all=False)
+        self.max_trials = self.configuration.get_simulation_param('max_trials', all=False)
+        self.e_lim = self.configuration.get_simulation_param('max_e', all=False)
+
+    def set_importance_sampling(self, sampling, sample_size=None, e_lim=None, max_trials=1_000_000_000):
+        if getattr(self, 'importance_sampling'):
+            print("Importance sampling parameters already set. Overriding with new values.")
+        self.importance_sampling = sampling
+        self.sample_size = sample_size
         self.max_trials = max_trials
         self.e_lim = e_lim
 
 
-    def run_monte_carlo_simulation(self, trials, v_inf):
+    def run_monte_carlo_simulation(self, v_inf):
 
 
         if self.importance_sampling:
             N = self.max_trials
         else:
-            N = trials
+            N = self.trials
 
         quota_condition = False
         n_captured = 0
@@ -120,6 +129,9 @@ class MonteCarloSimulation:
             b_max = self.rClose
 
             for lam, beta, b, phi in zip(lambda_samples, beta_samples, b_samples, phi_samples):
+
+                sampled += 1
+
                 v1Mag = calcs.v_1_mag(v_inf, self.muA, self.muB, self.aB, self.rClose)
                 v1Vec = calcs.v_1_vec(v1Mag, lam, beta)
                 vBVec = calcs.v_B_vec(self.vBMag, lam)
@@ -151,10 +163,9 @@ class MonteCarloSimulation:
                         out_b.append(b)
                         out_phi.append(phi)
                         n_captured += 1
+                
 
-                sampled += 1
-
-                if self.importance_sampling and n_captured >= self.quota:
+                if self.importance_sampling and n_captured >= self.sample_size:
                     quota_condition = True
                     break
                 
@@ -193,8 +204,7 @@ class MonteCarloSimulation:
         }
         self._save_mc_results(mc_results, N)
 
-
-        return print(f'Results saved for v_inf={v_inf/1e3} km/s with N={N} trials.')
+        return print(f'Results saved for v_inf={v_inf/1e3} km/s with N={sampled} trials.')
         
     def get_mc_results(self):
         return self.mc_results
