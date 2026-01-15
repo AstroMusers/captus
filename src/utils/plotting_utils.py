@@ -3,7 +3,10 @@ import pandas as pd
 from itertools import groupby
 from operator import itemgetter
 import re
+import matplotlib.pyplot as plt
 
+plt.rcParams.update({'font.family': 'serif', 'font.size': 10, 'axes.labelsize': 10, 'axes.titlesize': 12,
+                     'legend.fontsize': 9, 'xtick.labelsize': 9, 'ytick.labelsize': 9})
 def latex_label_key(s: str) -> str:
     # extract the first {...} group; fallback to cleaned text
     m = re.search(r"\{([^}]+)\}", s)
@@ -110,11 +113,29 @@ def sci_notation_latex(x, pos=None):
     """Format a number as 2.3 × 10^4 for axis labels (LaTeX style)."""
     if x == 0:
         return "0"
-    if x >= 100:
+    elif abs(x) >= 1:
         exponent = int(np.floor(np.log10(abs(x))))
         coeff = x / 10**exponent
         # Use LaTeX formatting for matplotlib
         return r"${:.2g} \times 10^{{{}}}$".format(coeff, exponent)
-    else:
-        # For small numbers, use standard formatting
-        return r"${:.2g}$".format(x)
+    elif abs(x) < 1:
+        exponent = int(np.floor(np.log10(abs(x))))
+        coeff = x / 10**exponent
+        return r"${:.2g} \times 10^{{{}}}$".format(coeff, exponent)
+    # else:
+    #     # For small numbers, use standard formatting
+    #     return r"${:.2g}$".format(x)
+    
+def log_tick_formatter(val, pos=None):
+        """Format log scale ticks as decimal numbers"""
+
+        if val >= 1:
+            return f'{val:.0f}'
+        elif val >= 0.1:
+            return f'{val:.1f}'
+        elif val >= 0.01:
+            return f'{val:.2f}'
+        elif val == 0:
+            return '0'
+        else:
+            return f'{val:.3f}'

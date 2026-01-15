@@ -46,16 +46,22 @@ class Configuration:
         self.system_param_dict = sys_params
 
         sim_params = cfg['simulation_param_dict']
-        vinf_params = cfg['v_inf_grid_params']
-        sim_params['v_inf_grid'] = self._create_vinf_grid(vinf_params)
+        sim_params['v_inf_grid_params'] = cfg['v_inf_grid_params']
         sim_params['importance_sampling'] = self.importance_sampling
+        sim_params['v_inf_grid'] = self._create_vinf_grid(cfg['v_inf_grid_params'])
         self.simulation_param_dict = sim_params
 
     def set_system_param(self, key, value):
+        
         self.system_param_dict[key] = value
 
     def set_simulation_param(self, key, value):
-        self.simulation_param_dict[key] = value
+        if key in self.simulation_param_dict['v_inf_grid_params'].keys():
+            self.simulation_param_dict['v_inf_grid_params'][key] = value
+            self.simulation_param_dict['v_inf_grid'] = self._create_vinf_grid(self.simulation_param_dict['v_inf_grid_params'])
+            print(f"Updated v_inf_grid_params '{key}' to {value} and regenerated v_inf_grid.")
+        else:
+            self.simulation_param_dict[key] = value
 
     def get_system_param(self, key=None, all=False):
         if all:
@@ -113,11 +119,12 @@ class Configuration:
         print(f'Radius of C: {calc.schwarzchild_radius(mC)*u.m.to(u.au)} au')
 
     def _create_vinf_grid(self, vinf_params):
-        v_inf_min = vinf_params['min']  # default 1 km/s
-        v_inf_max = vinf_params['max']  # default 300 km/s
-        samples = vinf_params['n']  # default 10
+        v_inf_min = vinf_params['min_v']  # default 1 km/s
+        v_inf_max = vinf_params['max_v']  # default 300 km/s
+        samples = vinf_params['n_v']  # default 10
         v_inf_grid = np.linspace(v_inf_min, v_inf_max, samples)
         return v_inf_grid
+
     
     def _set_save_dir(self, mc_dir=None, rebound_dir=None, plots_dir=None):
         name = self.name

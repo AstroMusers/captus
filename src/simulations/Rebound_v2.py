@@ -17,6 +17,7 @@ class OrbitalSimulation:
 
     def __init__(self, configuration, rng):
         self.sys_par = configuration.get_system_param(all=True)
+        self.sim_par = configuration.get_simulation_param(all=True)
         self.rng = rng
         self.configuration = configuration
         # Expect SI; convert to ('AU','yr','Msun') as needed
@@ -38,7 +39,7 @@ class OrbitalSimulation:
         self.iB = self.sys_par.get('iB', 0.0)  # default Jupiter inclination in radians
         self.name = self.sys_par['name']
         self.seed_base = self.sys_par['seed_base']
-
+        self.max_execution_time = self.sim_par['max_execution_time'] # in seconds
         self.rClose = calcs.r_close(self.epsilon, self.mA, self.mB, self.aB)
 
 

@@ -18,6 +18,7 @@ class Analysis:
         self.system_param_dict = configuration.get_system_param(all=True)
         self.simulation_param_dict = configuration.get_simulation_param(all=True)
         self.mc_sample_size = self.simulation_param_dict['sample_size']
+        self.importance_sampling = self.simulation_param_dict['importance_sampling']
 
         if rng is None:
             seed = self.system_param_dict['seed_base']
@@ -113,6 +114,8 @@ class Analysis:
                 #Metadata
                 "v_inf_m_s": float(mc_npz['v_inf']) if mc_npz is not None else None,
                 "v_inf_au_yr": (float(mc_npz['v_inf']) * u.m / u.s).to(u.au / u.yr).value if mc_npz is not None else None,
+                "mC": (self.system_param_dict['mC']*u.kg).to(u.M_sun).value,
+                'importance_sampling_size': self.simulation_param_dict['sample_size'],
                 'sample_count': sampled,
                 'capture_count': n_captured,
                 'sampled_capture_count': len(sampled_mc_results['idx']) if sampled_mc_results is not None else 0,
@@ -376,11 +379,14 @@ class Analysis:
             flag = self._as_scalar(entry["termination_flag"])
             
             if flag is None:
-                coll_mask.append(1)
+                coll_mask.append(0)
                 ej_mask.append(0)
             elif isinstance(flag, str) and 'escape_C' in flag:
                 ej_mask.append(1)
                 coll_mask.append(0)
+            elif isinstance(flag, str) and 'collision' in flag:
+                ej_mask.append(0)
+                coll_mask.append(1)
             else:
                 ej_mask.append(0)
                 coll_mask.append(0)
@@ -406,16 +412,29 @@ class Analysis:
         mA = self.system_param_dict["mA"]
         mB = self.system_param_dict["mB"]   
         aB = self.system_param_dict["aB"]
+        rB = self.system_param_dict["rB"]
         vdm = self.simulation_param_dict['vDM']
+        vBMag = self.system_param_dict["vB"]
         muA = mA * const.G.value
         muB = mB * const.G.value
         epsilon = sampled_mc["epsilon"] 
+        b = sampled_mc["b"]  # in meters
+        b_au = (b * u.m).to(u.au).value
         rClose = calc.r_close(epsilon, mA, mB, aB)
         v1Mag = calc.v_1_mag(mc_npz["v_inf"], muA, muB, aB, rClose)
         v1Mag_au = v1Mag * (u.m / u.s).to(u.au/u.yr)
         vdm = (vdm*u.m/u.s).to(u.au/u.yr).value
         b_max = (rClose * u.m).to(u.au).value
+        b_max_sampled = np.max(b_au)
         vinfinity = (mc_npz["v_inf"]*u.m/u.s).to(u.au/u.yr).value
+        vBVec = calc.v_B_vec(vBMag, sampled_mc["lambda1"])
+        v1Vec = calc.v_1_vec(v1Mag, sampled_mc["lambda1"], sampled_mc["beta"])
+        v1primeVec = calc.v_1_prime_vec(v1Vec,vBVec, sampled_mc["lambda1"], sampled_mc["beta"])
+        v1primeMag = calc.v_1_prime_mag(v1primeVec)
+        vesc = calc.v_esc(muA, aB)
+        b_min = calc.b_min(muB, rB, v1primeMag)
+        b_min = (b_min * u.m).to(u.au).value
+
         
         n_captured = int(sampled_mc["total_capture_count"])
         try:
@@ -430,8 +449,20 @@ class Analysis:
         n_ejected = int(np.sum(ej_mask))
         n_collided = int(np.sum(coll_mask))
         n_terminated = int(np.sum(term_mask))
-        
+
+        # if self.importance_sampling == True:
+        #     print("Using importance sampling for cross-section calculation.")
+        #     # capture_cross_section_total = 2 * (capture_cross_section_max/b_max**2)*(np.sum(b_au)*b_max_sampled)  # in au^2
+        #     capture_cross_section_total = 2 * ((float(np.pi)*b_max_sampled)/n_sampled) * (np.sum(b_au))  # in au^2
+        # else:
+        #     capture_cross_section_max = (mc_npz["sigma_MC_m2"] * u.m**2).to(u.au**2).value
+        #     capture_cross_section_total = capture_cross_section_max - ((capture_cross_section_max/b_max**2) * b_min**2)  # in au^2
+        #     print(f'capture_cross_section_total (no IS) = {capture_cross_section_total} au^2')
+        # R, b = calc.crossec_circle_R_b(v1Mag,  vBMag, vBVec, v1primeMag, v1primeVec, vesc, muB)
+        # collision_cross_section_total = np.pi * b_min**2
+        # capture_cross_section_total = (mc_npz["sigma_MC_m2"] * u.m**2).to(u.au**2).value
         capture_cross_section_total = (mc_npz["sigma_MC_m2"] * u.m**2).to(u.au**2).value
+        # capture_cross_section_exclude_coll = capture_cross_section_total - ((capture_cross_section_total/b_max**2) * b_min**2)  # in au^2
         capture_cross_section_ejected = ((n_ejected / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0
         capture_cross_section_collided = ((n_collided / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0
         capture_cross_section_terminated = ((n_terminated / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0

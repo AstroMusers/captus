@@ -6,13 +6,19 @@ from operator import itemgetter
 import os
 from collections.abc import Iterable
 import src.utils.plotting_utils as plu
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+from astropy import units as u
+from astropy import constants as const
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 class Plots:
     def __init__(self, name, analysis):
 
         self.name = name
-        
-        plots_dir = os.path.join(os.getcwd(), f'../plots/{self.name}/Plots')
+
+        plots_dir = os.path.join(REPO_ROOT, f'plots/{self.name}/Plots')
+
         if not os.path.exists(plots_dir):
             os.makedirs(plots_dir)
 
@@ -517,6 +523,8 @@ class Plots:
         fig, axes = self._figure(nrows=len(metrics), ncols=1, sharex=True, figsize=(7, 5))
         axes = np.atleast_1d(axes)
         cmap = plt.get_cmap('plasma', len(self.analysis_list) + 1)
+        markers = ['o', 's', '^', '*', 'v']
+        lines = [':', '--', '-', '-.', ':']
 
         for row, metric in enumerate(metrics):
             ax = axes[row]
@@ -551,15 +559,16 @@ class Plots:
         Each analysis should have analysis_dict attribute/field providing analysis_dict array, e.g., a_au.
         """
         fig, ax = self._figure(figsize=(7, 4))
+        analysis_dict_list = self.analysis_dicts.get(analysis_name, None)
         cmap = plt.get_cmap('plasma', len(self.analysis_list) + 1)
 
-        for i, analysis_dict in enumerate(self.analysis_list):
-            arr = getattr(an, array_attr, None)
-            if arr is None and hasattr(an, 'data'):
-                arr = an.data.get(array_attr)
+        for i, analysis_dict in enumerate(self.analysis_dict_list):
+            arr = getattr(analysis_dict, array_attr, None)
+            if arr is None and hasattr(analysis_dict, 'data'):
+                arr = analysis_dict.data.get(array_attr)
             if arr is None:
                 continue
-            ax.hist(np.asarray(arr), bins=bins, alpha=0.6, density=density, label=getattr(an, 'label', f'analysis_{i}'), color=cmap(i))
+            ax.hist(np.asarray(arr), bins=bins, alpha=0.6, density=density, label=getattr(analysis_dict, 'label', f'analysis_{i}'), color=cmap(i))
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
@@ -571,6 +580,475 @@ class Plots:
             out = os.path.join(self.plots_dir, f'hist_{array_attr}.png')
             fig.tight_layout()
             fig.savefig(out, dpi=300)
+        return fig
+
+    def multiple_analysis_metric_wrt_v(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = r'M$_{PBH}$', v_key = 'All', save=True):
+        """
+        Plot histogram for multiple analyses.
+        """
+        if analysis_key == 'All':
+            analysis_list = self.analysis_dicts.values()
+        elif isinstance(analysis_key, list):
+            for a in self.analysis_list:
+                analysis_list = [a for a in self.analysis_dicts if a.get_name() in analysis_key]
+        
+        mC_values = []
+
+        for a in analysis_list:
+            vkey = list(a.keys())[0]
+            mC = self._get_metric_from_sources(a[vkey], analysis_zkey)
+            mC_values.append(mC)
+
+        mC_min, mC_max = min(mC_values), max(mC_values)
+        norm = Normalize(vmin=mC_min, vmax=mC_max)
+        cmap = plt.get_cmap('plasma')
+        sm = ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+
+        fig, ax = self._figure(figsize=(7, 4))
+        markers = ['o', 's', '^', '*', 'v']
+        lines = [':', '--', '-', '-.', ':']
+
+        for i, analysis_dict in enumerate(analysis_list):
+            mC = mC_values[i]
+            color = cmap(norm(mC))
+            for j, metric_name in enumerate(metric_list):
+                metric_array = []
+                v_array = []
+                for v in analysis_dict.keys():
+                    if 'v' not in v:
+                        continue
+                    entry = analysis_dict[v]
+                    mc = entry.get('mc')
+                    if mc is None:
+                        continue
+                    v_inf = mc['v_inf']
+                    
+                    metric = self._get_metric_from_sources(entry, metric_name)
+
+                    if metric is None:
+                        metric = 0
+                        print(f"Metric '{metric_name}' not found for v={v}.")
+
+                    metric_array.append(metric)
+                    v_array.append(v_inf / 1e3)  # convert to km/s
+
+
+                v = np.asarray(v_array)
+                y = np.asarray(metric_array)
+
+                if metric_labels and i == 0:
+                    metric_label = metric_labels[j]
+                else:
+                    metric_label = None
+
+                ax.plot(v, y, marker=markers[j], linestyle=lines[j], alpha=0.8, label=metric_label, color=color, markersize=4, linewidth=1.5)
+
+        ax.set_xlabel(r'v$_\infty$ [km s$^{-1}$]')
+        ax.set_ylabel(metric_ylabel or 'Occurrences')
+        ax.set_yscale('log')
+        ax.legend(frameon=False, fontsize=8, ncol=2)
+   
+        # Add colorbar
+        cbar = fig.colorbar(sm, ax=ax, label=r'$m_C$ [M$_\odot$]')
+        cbar.formatter.set_powerlimits((-2, 2))
+        cbar.update_ticks()
+
+        if save:
+            figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
+            out = os.path.join(self.plots_dir, figname)
+            fig.tight_layout()
+            fig.savefig(out, dpi=300)
+
+    def multiple_analysis_metric_wrt_v_multipanel(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = [r'M$_{PBH}$', r'M$_{\odot}$'], scale = 'log', v_key = 'All', normalize=False, save=True):
+        """
+        Plot histogram for multiple analyses.
+        """
+        if analysis_key == 'All':
+            analysis_list = self.analysis_dicts.values()
+        elif isinstance(analysis_key, list):
+            for a in self.analysis_list:
+                analysis_list = [a for a in self.analysis_dicts if a.get_name() in analysis_key]
+
+        zkey_values = []
+
+        for a in analysis_list:
+            vkey = list(a.keys())[0]
+            zkey = self._get_metric_from_sources(a[vkey], analysis_zkey)
+            zkey_values.append(zkey)
+            normalization_const = self._get_metric_from_sources(a[vkey], 'importance_sampling_size')
+
+
+        nrows = len(analysis_list)
+        ncols = 1
+        fig, axs = self._figure(figsize=(3.5*ncols, 1*nrows), nrows=nrows, ncols=ncols, sharex=True)
+        markers = ['o', 's', '^', 'X', 'v']
+        lines = [':', '--', '-', '-.', ':']
+        cmap = plt.get_cmap('plasma', len(metric_list) + 1)
+
+        for i, analysis_dict in enumerate(analysis_list):
+            zkey = zkey_values[i]
+            
+            for j, metric_name in enumerate(metric_list):
+                metric_array = []
+                v_array = []
+                for v in analysis_dict.keys():
+                    if 'v' not in v:
+                        continue
+                    entry = analysis_dict[v]
+                    mc = entry.get('mc')
+                    if mc is None:
+                        continue
+                    v_inf = mc['v_inf']
+                    
+                    metric = self._get_metric_from_sources(entry, metric_name)
+
+                    if metric is None:
+                        metric = 0
+                        print(f"Metric '{metric_name}' not found for v={v}.")
+
+                    metric_array.append(metric)
+                    v_array.append(v_inf / 1e3)  # convert to km/s
+
+
+                v = np.asarray(v_array)
+                y = np.asarray(metric_array)
+
+                if metric_labels and i == 0:
+                    metric_label = metric_labels[j]
+                else:
+                    metric_label = None
+                
+                if normalize:
+                    y = y / normalization_const
+                
+                if scale == 'log':
+                    axs[i].set_yscale('log')
+
+                axs[i].plot(v, y, marker=markers[j], linestyle=lines[j], alpha=0.8, 
+                        label=metric_label, color=cmap(j), markersize=7, linewidth=1.5,markeredgecolor='black', markeredgewidth=0.6)
+                
+
+                
+                # Add mC label on right side of each panel
+                axs[i].text(0.2, 0.6, fr'{analysis_zlabel[0]}={plu.sci_notation_latex(zkey)} {analysis_zlabel[1]}', transform=axs[i].transAxes,
+                        rotation=0, va='center', fontsize=9)
+
+        # Set xlabel only on bottom panel
+        axs[-1].set_xlabel(r'v$_\infty$ [km s$^{-1}$]')
+        
+        # Set ylabel on middle panel (or use fig.supylabel)
+        # Option 1: Middle axis
+        # axs[len(axs)//2].set_ylabel(metric_ylabel or 'Occurrences')
+        
+        # Option 2: Figure-level ylabel (better for multi-panel)
+        fig.supylabel(metric_ylabel or 'Occurrences', x=0.02)
+        fig.subplots_adjust(hspace=0.0, left=0.2, right=0.90, top=0.95, bottom=0.08)
+
+        for ax in axs[:-1]:
+            ax.tick_params(labelbottom=False) 
+        for ax in axs:
+            ax.yaxis.set_major_formatter(FuncFormatter(plu.log_tick_formatter))
+    
+
+        ylims = [ax.get_ylim() for ax in axs]
+        global_ylim = (min([y[0] for y in ylims])*0.8, max([y[1] for y in ylims])+0.5*max([y[1] for y in ylims]))
+        for ax in axs:
+            ax.set_ylim(global_ylim)
+        # Legend only on top panel
+        axs[0].legend(frameon=False, fontsize=9, ncol=2, 
+                      bbox_to_anchor=(0.5, 1.05), loc='lower center')
+
+        if save:
+            figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
+            out = os.path.join(self.plots_dir, figname)
+            fig.savefig(out, dpi=300)       
+
+    def multiple_analysis_metric_wrt_v(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = r'M$_{PBH}$', scale = 'log', v_key = 'All', save=True):
+        """
+        Plot histogram for multiple analyses.
+        """
+        if analysis_key == 'All':
+            analysis_list = self.analysis_dicts.values()
+        elif isinstance(analysis_key, list):
+            for a in self.analysis_list:
+                analysis_list = [a for a in self.analysis_dicts if a.get_name() in analysis_key]
+        
+        mC_values = []
+
+        for a in analysis_list:
+            vkey = list(a.keys())[0]
+            mC = self._get_metric_from_sources(a[vkey], analysis_zkey)
+            mC_values.append(mC)
+
+        mC_min, mC_max = min(mC_values), max(mC_values)
+        norm = Normalize(vmin=mC_min, vmax=mC_max)
+        cmap = plt.get_cmap('plasma')
+        sm = ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+
+        fig, ax = self._figure(figsize=(7, 4))
+        markers = ['o', 's', '^', '*', 'v']
+        lines = [':', '--', '-', '-.', ':']
+
+        for i, analysis_dict in enumerate(analysis_list):
+            mC = mC_values[i]
+            color = cmap(norm(mC))
+            for j, metric_name in enumerate(metric_list):
+                metric_array = []
+                v_array = []
+                for v in analysis_dict.keys():
+                    if 'v' not in v:
+                        continue
+                    entry = analysis_dict[v]
+                    mc = entry.get('mc')
+                    if mc is None:
+                        continue
+                    v_inf = mc['v_inf']
+                    
+                    metric = self._get_metric_from_sources(entry, metric_name)
+
+                    if metric is None:
+                        metric = 0
+                        print(f"Metric '{metric_name}' not found for v={v}.")
+
+                    metric_array.append(metric)
+                    v_array.append(v_inf / 1e3)  # convert to km/s
+
+
+                v = np.asarray(v_array)
+                y = np.asarray(metric_array)
+
+                if metric_labels and i == 0:
+                    metric_label = metric_labels[j]
+                else:
+                    metric_label = None
+
+                ax.plot(v, y, marker=markers[j], linestyle=lines[j], alpha=0.8, label=metric_label, color=color, markersize=4, linewidth=1.5)
+
+        ax.set_xlabel(r'v$_\infty$ [km s$^{-1}$]')
+        ax.set_ylabel(metric_ylabel or 'Occurrences')
+        ax.set_yscale('log')
+        ax.legend(frameon=False, fontsize=8, ncol=2)
+   
+        # Add colorbar
+        cbar = fig.colorbar(sm, ax=ax, label=r'$m_C$ [M$_\odot$]')
+        cbar.formatter.set_powerlimits((-2, 2))
+        cbar.update_ticks()
+
+        if save:
+            figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
+            out = os.path.join(self.plots_dir, figname)
+            fig.tight_layout()
+            fig.savefig(out, dpi=300)
+
+    def multiple_analysis_metric_array_wrt_v_twinaxis_multipanel(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['log', 'log'], metric_masks=None, save=True):
+        """
+        Plot array metrics (like semi_major_axes) as violin plots with twin y-axes in multi-panel layout.
+        Each panel represents one analysis, with two sets of violins (one per y-axis).
+        
+        Parameters:
+        -----------
+        metric_lists : list of lists
+            [[left_metrics], [right_metrics]] - metrics for left and right y-axes
+        metric_ylabels : list of str
+            [left_ylabel, right_ylabel]
+        metric_labels : list of lists, optional
+            [[left_labels], [right_labels]]
+        metric_masks : list of lists, optional
+            [[left_masks], [right_masks]] - masks for filtering data
+        """
+        if analysis_key == 'All':
+            analysis_list = list(self.analysis_dicts.values())
+        elif isinstance(analysis_key, list):
+            analysis_list = [self.analysis_dicts[name] for name in analysis_key if name in self.analysis_dicts]
+        
+        # Get z-axis values (e.g., mC) for each analysis
+        zkey_values = []
+        for a in analysis_list:
+            vkey = list(a.keys())[0]
+            zkey = self._get_metric_from_sources(a[vkey], analysis_zkey)
+            zkey_values.append(zkey)
+        
+        # Create multi-panel figure
+        nrows = len(analysis_list)
+        ncols = 1
+        fig, axs = self._figure(figsize=(7, 1.5*nrows), nrows=nrows, ncols=ncols, sharex=True)
+        
+        # Make axs iterable even if single subplot
+        if nrows == 1:
+            axs = [axs]
+        
+        cmap = plt.get_cmap('plasma', 15)
+        ax2_list = []
+        # Process each analysis
+        for panel_idx, analysis_dict in enumerate(analysis_list):
+            zkey = zkey_values[panel_idx]
+            
+            # Get analysis object for mask resolution
+            analysis_name = list(self.analysis_dicts.keys())[list(self.analysis_dicts.values()).index(analysis_dict)]
+            analysis = self.get_analysis(analysis_name)
+            
+            # Create twin axis for this panel
+            ax1 = axs[panel_idx]
+            ax2 = ax1.twinx()
+            ax2_list.append(ax2)
+            # Process both left (ax1) and right (ax2) metrics
+            for axis_idx, (metric_list, ax_obj, side) in enumerate([
+                (metric_lists[0], ax1, 'low'),   # Left y-axis
+                (metric_lists[1], ax2, 'high')   # Right y-axis
+            ]):
+                
+                for metric_idx, metric_name in enumerate(metric_list):
+                    datasets = []
+                    v_array = []
+                    
+                    # Collect data for each v_inf
+                    for v in analysis_dict.keys():
+                        if 'v' not in v:
+                            continue
+                        
+                        entry = analysis_dict[v]
+                        mc = entry.get('mc')
+                        if mc is None or entry['capture_count'] < 10:
+                            continue
+                        v_inf = mc['v_inf']
+                        
+                        metric = self._get_metric_from_sources(entry, metric_name)
+                        
+                        # Apply mask if provided
+                        if metric_masks is not None and metric_masks[axis_idx]:
+                            metric_mask = metric_masks[axis_idx][metric_idx] if metric_idx < len(metric_masks[axis_idx]) else None
+                            if metric_mask is not None:
+                                mask = self.resolve_mask(analysis, metric_mask, v)
+                                if mask is not None:
+                                    mask = np.asarray(mask)
+                                    print(f"Panel {panel_idx}, axis {axis_idx}: Applying mask for '{metric_name}' at v={v}, sum={np.sum(mask)}")
+                                    metric = [m for j, m in enumerate(metric) if mask[j]]
+                        
+                        # Process array metrics
+                        if isinstance(metric, (list, tuple)):
+                            # Flatten and extract valid values
+                            # Trim m from two ends to avoid initial or final outliers
+
+                            if len(metric) > 2:
+                                metric = metric[1:-1]
+                            if len(metric) == 0:
+                                continue
+                            data_v = [float(np.mean(m)) for m in metric if np.size(m) > 0]
+                            datasets.append(data_v)
+                            v_array.append(v_inf / 1e3)
+                        else:
+                            continue
+                    
+                    if len(datasets) == 0:
+                        print(f"Panel {panel_idx}, axis {axis_idx}: No array data for '{metric_name}'")
+                        continue
+                    
+                    # Sort by v_inf
+                    v_array = np.asarray(v_array)
+                    order = np.argsort(v_array)
+                    pos = v_array[order]
+                    data_sorted = [datasets[i] for i in order]
+                    
+                    # Create violin plot
+                    vp = ax_obj.violinplot(
+                        dataset=data_sorted,
+                        positions=pos,
+                        showmeans=True,
+                        showmedians=False,
+                        showextrema=True,
+                        widths=5,
+                        side=side
+                    )
+                    
+                    # Style violins
+                    color_idx = 3 + 8*axis_idx
+                    for body in vp['bodies']:
+                        body.set_zorder(0)
+                        body.set_alpha(0.3)
+                        body.set_facecolor(cmap(color_idx))
+                    
+                    for partname in ('cbars', 'cmins', 'cmaxes', 'cmeans'):
+                        vp[partname].set_zorder(1)
+                        vp[partname].set_alpha(0.8)
+                        vp[partname].set_edgecolor(cmap(color_idx))
+                        vp[partname].set_linewidth(1.5)
+                    
+                    vp['cmeans'].set_zorder(2)
+                    vp['cmeans'].set_alpha(1)
+            
+            # Set log scale for both axes
+            ax1.set_yscale(scale[0])
+            ax2.set_yscale(scale[1])
+            ax1.yaxis.set_major_formatter(FuncFormatter(plu.log_tick_formatter))
+            ax2.yaxis.set_major_formatter(FuncFormatter(plu.log_tick_formatter))
+            if panel_idx < nrows - 1:
+                ax1.tick_params(labelbottom=False)
+                ax2.tick_params(labelbottom=False)
+            
+            # Add analysis label
+            ax2.text(0.35, 0.5, 
+                    fr'{analysis_zlabel[0]}={plu.sci_notation_latex(zkey)} {analysis_zlabel[1]}',
+                    transform=ax2.transAxes, rotation=0, va='center', fontsize=11)
+
+        # Set xlabel only on bottom panel
+        axs[-1].set_xlabel(r'v$_\infty$ [km s$^{-1}$]')
+
+        # Left axes (semi-major axis)
+        ylims_left = [ax.get_ylim() for ax in axs]
+        global_ylim_left = (
+            min([y[0] for y in ylims_left]), 
+            max([y[1] for y in ylims_left])*1.1
+        )
+        for ax in axs:
+            ax.set_ylim(global_ylim_left)
+        
+        # Right axes (eccentricity)
+        ylims_right = [ax2.get_ylim() for ax2 in ax2_list]
+        global_ylim_right = (
+            min([y[0] for y in ylims_right]), 
+            max([y[1] for y in ylims_right])*1.1
+        )
+        for ax2 in ax2_list:
+            ax2.set_ylim(global_ylim_right)
+                
+            
+        # Add legend if labels provided
+        if metric_labels:
+            handles = []
+            labels = []
+            # Create dummy handles for legend
+            from matplotlib.patches import Rectangle
+            for i, label in enumerate(metric_labels[0]):
+                handles.append(Rectangle((0,0),1,1, facecolor=cmap(3), alpha=0.5))
+                labels.append(label)
+            for i, label in enumerate(metric_labels[1]):
+                handles.append(Rectangle((0,0),1,1, facecolor=cmap(11), alpha=0.5))
+                labels.append(label)
+            
+            axs[0].legend(handles, labels, frameon=False, fontsize=9, ncol=2,
+                        bbox_to_anchor=(0.5, 1.05), loc='lower center')
+        
+        # Adjust layout
+        fig.subplots_adjust(hspace=0.0, left=0.1, right=0.9, top=0.95, bottom=0.1)
+        
+        # Left y-axis label
+        fig.text(0.02, 0.5, metric_ylabels[0], 
+                rotation=90, va='center', ha='center', fontsize=11)
+        
+        # Right y-axis label
+        fig.text(0.96, 0.5, metric_ylabels[1], 
+                rotation=270, va='center', ha='center', fontsize=11)
+    
+
+ 
+        if save:
+            metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
+            figname = f'multiple_analysis_{metricsname}_twinaxis_vs_v.png'
+            out = os.path.join(self.plots_dir, figname)
+            fig.savefig(out, dpi=300, bbox_inches='tight')
+        
         return fig
     
     def _get_metric_from_sources(self, an_entry, metric_name):
@@ -586,6 +1064,11 @@ class Plots:
         rb = an_entry.get('rebound') or []
         mc = an_entry.get('mc') or []
         oc = an_entry.get('occurrences') or None
+        tc = an_entry.get('termination_counts') or None
+
+        # 0) check if metric is directly in an_entry
+        if metric_name in an_entry:
+            return an_entry[metric_name]
 
         # 1) search rebound entries
         try:
@@ -607,7 +1090,12 @@ class Plots:
         if oc is not None and metric_name in oc:
             return oc[metric_name]
         
+        if tc is not None and metric_name in tc:
+            return tc[metric_name]
+
+
         return None
+    
 
     def resolve_mask(self, analysis, spec, v_key):
         if spec is None:

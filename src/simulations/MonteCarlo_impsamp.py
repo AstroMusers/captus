@@ -3,6 +3,7 @@ import astropy.constants as const
 import src.utils.calculations as calcs
 import numpy as np
 from astropy import units as u
+import datetime as dt
 import multiprocessing
 from numpy.random import default_rng, SeedSequence, PCG64, Generator
 
@@ -82,14 +83,16 @@ class MonteCarloSimulation:
         self.trials = self.configuration.get_simulation_param('trials', all=False)
         self.max_trials = self.configuration.get_simulation_param('max_trials', all=False)
         self.e_lim = self.configuration.get_simulation_param('max_e', all=False)
+        self.max_execution_time = self.configuration.get_simulation_param('max_execution_time', all=False)
 
-    def set_importance_sampling(self, sampling, sample_size=None, e_lim=None, max_trials=1_000_000_000):
+    def set_importance_sampling(self, sampling, sample_size=None, e_lim=None, max_execution_time=None, max_trials=1_000_000_000):
         if getattr(self, 'importance_sampling'):
             print("Importance sampling parameters already set. Overriding with new values.")
         self.importance_sampling = sampling
         self.sample_size = sample_size
         self.max_trials = max_trials
         self.e_lim = e_lim
+        self.max_execution_time = max_execution_time # in seconds
 
 
     def run_monte_carlo_simulation(self, v_inf):
@@ -107,7 +110,8 @@ class MonteCarloSimulation:
         sampled = 0
         b_max = self.rClose
 
-        while sampled < N and quota_condition==False:
+        now = dt.datetime.now()
+        while sampled < N and quota_condition==False and (dt.datetime.now() - now).total_seconds() < self.max_execution_time:
             remaining = N - sampled
             batch_size = min(remaining, 1_000_000)  # process in batches of 1,000,000
 
@@ -201,6 +205,7 @@ class MonteCarloSimulation:
             'cap_phi': np.array(out_phi),
             'epsilon': self.epsilon,
             'sample_number': sampled,
+            'execution_time': (dt.datetime.now() - now).total_seconds()/60  # in minutes
         }
         self._save_mc_results(mc_results, N)
 

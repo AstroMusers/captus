@@ -33,12 +33,13 @@ system_param_dict_massivePBH:
   iB: 0.02275909344600606
   epsilon: 0.1
 v_inf_grid_params: 
-  min: 1000  # Minimum incoming velocity in m/s
-  max: 40498.00358610428  # Maximum incoming velocity in m/s
-  n: 10  # Number of samples for incoming velocity
+  min_v: 1000  # Minimum incoming velocity in m/s
+  max_v: 40498.00358610428  # Maximum incoming velocity in m/s
+  n_v: 10  # Number of samples for incoming velocity
 simulation_param_dict:
   trials: 10000000        # int
   max_trials: 100000000   # int
+  max_execution_time: 3600  # int, in seconds
   sample_size: 100        # int
   max_e: 1.00          # float
   vDM: 220000.0          # float
