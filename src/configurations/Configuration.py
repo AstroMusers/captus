@@ -38,6 +38,9 @@ class Configuration:
             if 'Intermediate' in self.name:
                 cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/configurations/IntermediateBHStar.yaml')))
 
+            if 'OmegaCenturi' in self.name:
+                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/configurations/OmegaCenturi.yaml')))
+
         if sys_params is None:
             sys_params = cfg['system_param_dict']
 
