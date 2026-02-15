@@ -1,6 +1,6 @@
 import os
 import astropy.constants as const
-import src.utils.calculations_v2 as calcs
+import src.utils.calculations_v3 as calcs
 import numpy as np
 from astropy import units as u
 import datetime as dt
@@ -76,6 +76,8 @@ class MonteCarloSimulation:
                  cap_C_v2=results['cap_C_v2'],
                  cap_B_pos=results['cap_B_pos'],
                  cap_B_v=results['cap_B_v'],
+                 cap_system_energy=results['cap_system_energy'],
+                 cap_capture_energy=results['cap_capture_energy'],
                  epsilon=results['epsilon'],
                  sample_number=results['sample_number'],
                  execution_time=results['execution_time'],
@@ -86,8 +88,8 @@ class MonteCarloSimulation:
                  b_max=results['b_max'],
                  checks=results['checks'],
                  capture_cross_sections=results['capture_cross_sections'],
-                 capture_cross_sections_captured=results['capture_cross_sections_captured'],
-                 collision_cross_sections=results['collision_cross_sections'])
+                 cap_capture_cross_sections_captured=results['cap_capture_cross_sections_captured'],
+                 cap_collision_cross_sections=results['cap_collision_cross_sections'])
 
     def _set_importance_sampling(self):
         self.importance_sampling = self.configuration.get_simulation_param('importance_sampling', all=False)
@@ -119,12 +121,13 @@ class MonteCarloSimulation:
         quota_condition = False
         n_captured = 0
         out_lambda, out_beta, out_b, out_phi, out_C_pos, out_C_v2, out_B_pos, out_B_v = [], [], [], [], [], [], [], []
+        out_system_energy, out_capture_energy = [], []
         capture_crossections_captured = []
         capture_crossections = []
         collision_crossections = []
         out_bmin, out_bmax = [], []
         out_a, out_e = [], []
-        sampled, failed, check1, check2, check3 = 0, 0, 0, 0, 0
+        sampled, failed, check1, check2, check3, check4 = 0, 0, 0, 0, 0, 0
         now = dt.datetime.now()
         while sampled < N and not quota_condition and (dt.datetime.now() - now).total_seconds() < self.max_execution_time:
             remaining = N - sampled
@@ -170,8 +173,7 @@ class MonteCarloSimulation:
                 check1 += 1
                 capture_crossections.append(calcs.capture_cross_section(b_min, b_max))
                 v_escB = calcs.v_esc(self.muB, self.rB)
-                collision_crossections.append(calcs.collision_cross_section(self.rB, v_escB, v1primeMag))
-                u_b = self.rng.uniform(0.0, 1.0, size=1)
+                u_b = self.rng.uniform(0.0, 1.0)
                 b = b_max * np.sqrt(u_b)
 
                 if b < b_min:
@@ -185,21 +187,41 @@ class MonteCarloSimulation:
                 v2Mag = calcs.v_2_mag(v2Vec)
 
                 v2primeVec = calcs.v_2_prime_vec(v2Vec, vBVec)
+                v2primeUnit = calcs.unit(v2primeVec)
                 rABVec = calcs.r_AB_vec(self.aB, lam)
 
-                exit_point_B_frame = calcs.exit_point_from_scatter(v1primeVec, v2primeVec, self.muB, self.rClose, b=b)
+                exit_point_B_frame = v2primeUnit * self.rClose
                 exit_point = exit_point_B_frame + rABVec
                 distance_A_to_exit = np.linalg.norm(exit_point)
-                spec_UE2 = calcs.potential_energy(self.muA, distance_A_to_exit, self.muB, self.rClose)
-                E2_val = 0.5 * v2Mag**2 + spec_UE2
+                # bVec = calcs.b_vector(self.muB, v1primeMag, v1primeVec, phi, b)
+                # exit_point_B_frame2 = calcs.exit_point_from_scatter(v1primeVec, v2primeVec, bVec, self.muB, self.rClose, b=b)
+                # exit_point2 = exit_point_B_frame2 + rABVec
+                # distance_A_to_exit2 = np.linalg.norm(exit_point2)
+                # E2 = 0.5 * v2Mag**2 + calcs.potential_energy(self.muA, distance_A_to_exit2, self.muB, self.rClose)
 
-                if E2_val + (self.muB / self.rClose) < 0:
+                spec_UE2 = calcs.potential_energy(self.muA, distance_A_to_exit, self.muB, self.rClose)
+                E2_system = 0.5 * v2Mag**2 + spec_UE2
+                E2_capture = 0.5 * v2Mag**2 - (self.muA / distance_A_to_exit)
+
+                # percentage_diff = np.linalg.norm(exit_point - exit_point2) / np.linalg.norm(exit_point2) * 100
+                # percentage_diff_E = np.abs(E2 - E2_system) / np.abs(E2_system) * 100
+                # out_system_energy.append(percentage_diff_E)
+                # out_C_pos.append(percentage_diff)
+
+
+                if E2_system < 0:
+                    # print("Skipped due to E2_system < 0:", E2_system)
                     check3 += 1
 
+                if E2_capture < 0:
+                    check4 += 1
+
                     L2_val = calcs.specific_L2(exit_point, v2Vec)
-                    a_val, e_val = calcs.a_e(self.muA, E2_val, L2_val)
+                    a_val, e_val = calcs.a_e(self.muA, E2_capture, L2_val)
 
                     if a_val > 0 and 0 <= e_val < (1 if self.e_lim is None else self.e_lim):
+                        capture_crossec = calcs.capture_cross_section(b_min, b_max)
+                        collision_crossec = calcs.collision_cross_section(self.rB, v_escB, v1primeMag)
                         out_a.append(a_val)
                         out_e.append(e_val)
                         out_lambda.append(lam)
@@ -212,7 +234,11 @@ class MonteCarloSimulation:
                         out_C_v2.append(v2Vec)
                         out_B_pos.append(rABVec)
                         out_B_v.append(vBVec)
-                        capture_crossections_captured.append(calcs.capture_cross_section(b_min, b_max))
+                        out_system_energy.append(E2_system)
+                        out_capture_energy.append(E2_capture)
+                        capture_crossections_captured.append(capture_crossec)
+                        collision_crossections.append(collision_crossec)
+
                         n_captured += 1
                 
 
@@ -244,7 +270,7 @@ class MonteCarloSimulation:
             'sigma_MC_dsigma_m2': sigma_MC_dsigma,
             'sigma_MC_dsigma_captured_m2': sigma_MC_dsigma_captured,
             'sigma_MC_bmax_m2': sigma_MC_bmax,
-            'sigma_MC_areaB': (sigma_MC / self.areaB),
+            'sigma_MC_areaB': (sigma_MC_dsigma_captured / self.areaB),
             'a_au': a_au,
             'e': e_arr,
             'cap_lambda': np.array(out_lambda),
@@ -255,14 +281,16 @@ class MonteCarloSimulation:
             'cap_C_v2': np.array(out_C_v2),
             'cap_B_pos': np.array(out_B_pos),
             'cap_B_v': np.array(out_B_v),
+            'cap_system_energy': np.array(out_system_energy),
+            'cap_capture_energy': np.array(out_capture_energy),
             'epsilon': self.epsilon,
             'sample_number': sampled,
             'b_min': np.array(out_bmin),
             'b_max': np.array(out_bmax),
-            'checks': (sampled, failed, check1, check2, check3, n_captured),
+            'checks': (sampled, failed, check1, check2, check3, check4, n_captured),
             'capture_cross_sections': np.array(capture_crossections),
-            'capture_cross_sections_captured': np.array(capture_crossections_captured),
-            'collision_cross_sections': np.array(collision_crossections),
+            'cap_capture_cross_sections_captured': np.array(capture_crossections_captured),
+            'cap_collision_cross_sections': np.array(collision_crossections),
             'execution_time': (dt.datetime.now() - now).total_seconds()/60  # in minutes
         }
         self.mc_results = mc_results

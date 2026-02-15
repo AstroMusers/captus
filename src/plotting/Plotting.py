@@ -664,109 +664,7 @@ class Plots:
             fig.tight_layout()
             fig.savefig(out, dpi=300)
 
-    def multiple_analysis_metric_wrt_v_multipanel(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = [r'M$_{PBH}$', r'M$_{\odot}$'], scale = 'log', v_key = 'All', normalize=False, fig_size=None, save=True):
-        """
-        Plot histogram for multiple analyses.
-        """
-        if analysis_key == 'All':
-            analysis_list = self.analysis_dicts.values()
-        elif isinstance(analysis_key, list):
-            for a in self.analysis_list:
-                analysis_list = [a for a in self.analysis_dicts if a.get_name() in analysis_key]
-
-        zkey_values = []
-
-        for a in analysis_list:
-            vkey = list(a.keys())[0]
-            zkey = self._get_metric_from_sources(a[vkey], analysis_zkey)
-            zkey_values.append(zkey)
-            normalization_const = self._get_metric_from_sources(a[vkey], 'importance_sampling_size')
-
-
-        nrows = len(analysis_list)
-        ncols = 1
-        fig, axs = self._figure(figsize=fig_size if fig_size is not None else (3.5*ncols, 1*nrows), nrows=nrows, ncols=ncols, sharex=True)
-        markers = ['o', 's', '^', 'X', 'v']
-        lines = [':', '--', '-', '-.', ':']
-        cmap = plt.get_cmap('plasma', len(metric_list) + 1)
-
-        for i, analysis_dict in enumerate(analysis_list):
-            zkey = zkey_values[i]
-            
-            for j, metric_name in enumerate(metric_list):
-                metric_array = []
-                v_array = []
-                for v in analysis_dict.keys():
-                    if 'v' not in v:
-                        continue
-                    entry = analysis_dict[v]
-                    mc = entry.get('mc')
-                    if mc is None or (entry['capture_count'] == 0 and self.zero_capture_excluded):
-                        continue
-                    v_inf = mc['v_inf']
-                    
-                    metric = self._get_metric_from_sources(entry, metric_name)
-
-                    if metric is None:
-                        metric = 0
-                        print(f"Metric '{metric_name}' not found for v={v}.")
-
-                    metric_array.append(metric)
-                    v_array.append(v_inf / 1e3)  # convert to km/s
-
-
-                v = np.asarray(v_array)
-                y = np.asarray(metric_array)
-
-                if metric_labels and i == 0:
-                    metric_label = metric_labels[j]
-                else:
-                    metric_label = None
-                
-                if normalize:
-                    y = y / normalization_const
-                
-                if scale == 'log':
-                    axs[i].set_yscale('log')
-
-                axs[i].plot(v, y, marker=markers[j], linestyle=lines[j], alpha=0.8, 
-                        label=metric_label, color=cmap(j), markersize=7, linewidth=1.5,markeredgecolor='black', markeredgewidth=0.6)
-                
-
-                
-                # Add mC label on right side of each panel
-                axs[i].text(0.2, 0.6, fr'{analysis_zlabel[0]}={plu.sci_notation_latex(zkey)} {analysis_zlabel[1]}', transform=axs[i].transAxes,
-                        rotation=0, va='center', fontsize=9)
-
-        # Set xlabel only on bottom panel
-        axs[-1].set_xlabel(r'v$_\infty$ [km s$^{-1}$]')
-        
-        # Set ylabel on middle panel (or use fig.supylabel)
-        # Option 1: Middle axis
-        # axs[len(axs)//2].set_ylabel(metric_ylabel or 'Occurrences')
-        
-        # Option 2: Figure-level ylabel (better for multi-panel)
-        fig.supylabel(metric_ylabel or 'Occurrences', x=0.02)
-        fig.subplots_adjust(hspace=0.0, left=0.2, right=0.90, top=0.95, bottom=0.08)
-
-        for ax in axs[:-1]:
-            ax.tick_params(labelbottom=False) 
-        # for ax in axs:
-        #     ax.yaxis.set_major_formatter(FuncFormatter(plu.log_tick_formatter))
     
-
-        ylims = [ax.get_ylim() for ax in axs]
-        global_ylim = (min([y[0] for y in ylims])*0.8, max([y[1] for y in ylims])+0.5*max([y[1] for y in ylims]))
-        for ax in axs:
-            ax.set_ylim(global_ylim)
-        # Legend only on top panel
-        axs[0].legend(frameon=False, fontsize=9, ncol=2, 
-                      bbox_to_anchor=(0.5, 1.05), loc='lower center')
-
-        if save:
-            figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
-            out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300)       
 
     def multiple_analysis_metric_wrt_v(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = r'M$_{PBH}$', scale = 'log', v_key = 'All', fig_size=None, save=True):
         """
@@ -843,7 +741,6 @@ class Plots:
         if save:
             figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.tight_layout()
             fig.savefig(out, dpi=300)
 
     def multiple_analysis_metric_wrt_v_multipanel(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = [r'M$_{PBH}$', r'M$_{\odot}$'], scale = 'log', v_key = 'All', unit_change=[1e-3, 1, 1], normalize='importance_sampling_size', fig_size=None, save=True):
@@ -921,7 +818,7 @@ class Plots:
 
                 
                 # Add mC label on right side of each panel
-                axs[i].text(0.1, 0.1, fr'{analysis_zlabel[0]}={plu.sci_notation_latex(zkey)} {analysis_zlabel[1]}', transform=axs[i].transAxes,
+                axs[i].text(0.07, 0.1, fr'{analysis_zlabel[0]}={plu.sci_notation_latex(zkey)} {analysis_zlabel[1]}', transform=axs[i].transAxes,
                         rotation=0, va='center', fontsize=9)
 
         # Set xlabel only on bottom panel
@@ -933,7 +830,7 @@ class Plots:
         
         # Option 2: Figure-level ylabel (better for multi-panel)
         fig.supylabel(metric_ylabel or 'Occurrences', x=0.02)
-        fig.subplots_adjust(hspace=0.0, left=0.2, right=0.90, top=0.95, bottom=0.08)
+        fig.subplots_adjust(hspace=0.0, left=0.2, right=0.98, top=0.9, bottom=0.08)
 
         for ax in axs[:-1]:
             ax.tick_params(labelbottom=False) 
@@ -947,7 +844,7 @@ class Plots:
             ax.set_ylim(global_ylim)
         # Legend only on top panel
         axs[0].legend(frameon=False, fontsize=9, ncol=2, 
-                      bbox_to_anchor=(0.5, 1.05), loc='lower center')
+                      bbox_to_anchor=(0.5, 0.95), loc='lower center')
 
         if save:
             figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
@@ -1184,11 +1081,11 @@ class Plots:
         axs[-1].set_xlabel(r'v$_\infty$ [km s$^{-1}$]')
         
         # Figure-level y-labels
-        fig.text(0.01, 0.5, metric_ylabels[0], rotation=90, va='center', ha='center', fontsize=11)
+        fig.text(0.007, 0.5, metric_ylabels[0], rotation=90, va='center', ha='center', fontsize=11)
         fig.text(0.99, 0.5, metric_ylabels[1], rotation=270, va='center', ha='center', fontsize=11)
         
-        fig.subplots_adjust(hspace=0.0, left=0.15, right=0.85, top=0.95, bottom=0.08)
-    
+        fig.subplots_adjust(hspace=0.0, left=0.15, right=0.88, top=0.9, bottom=0.08)
+
         # Hide x-tick labels on all but bottom panel
         for ax in axs[:-1]:
             ax.tick_params(labelbottom=False)
@@ -1262,7 +1159,7 @@ class Plots:
             
             # Create dummy handles for metrics
             from matplotlib.patches import Rectangle
-            for j, label in enumerate(max(metric_labels[0], metric_labels[1], key=len)):
+            for j, label in enumerate((metric_labels[0]+ metric_labels[1])):
                 handles_left.append(Rectangle((0,0),1,1, facecolor=cmap(j), 
                                              edgecolor='black', linewidth=0.6, alpha=0.8))
                 labels_left.append(label.split(' ')[0])  # Remove any unit info in parentheses
@@ -1285,7 +1182,7 @@ class Plots:
             all_labels = labels_left + labels_right
 
             axs[0].legend(all_handles, all_labels, frameon=False, fontsize=9, 
-                         ncol=2, bbox_to_anchor=(0.5, 1.05), loc='lower center')
+                         ncol=2, bbox_to_anchor=(0.5, 1.08), loc='lower center')
     
         if save:
             metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
@@ -1293,7 +1190,7 @@ class Plots:
             out = os.path.join(self.plots_dir, figname)
             fig.savefig(out, dpi=300, bbox_inches='tight')
         
-        return fig
+        
 
     def multiple_analysis_metric_array_wrt_v_twinaxis_multipanel(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['log', 'log'], unit_change=[1e-3, 1, 1], global_ylim=False, metric_masks=None, fig_size=None, save=True):
         """
@@ -1517,6 +1414,7 @@ class Plots:
         rb = an_entry.get('rebound', [])
         oc = an_entry.get('occurrences')
         tc = an_entry.get('termination_counts')
+        smc = an_entry.get('sampled_mc')
 
         # 0) Direct entry check
         if metric_name in an_entry:
@@ -1552,6 +1450,11 @@ class Plots:
         if tc is not None and metric_name in tc:
             value = tc[metric_name]
             print(f'✓ Found in termination_counts')
+            return value
+        # 5) Sampled MC
+        if smc is not None and metric_name in smc:
+            value = smc[metric_name]
+            print(f'✓ Found in sampled_mc')
             return value
 
         print(f'✗ Metric "{metric_name}" not found')

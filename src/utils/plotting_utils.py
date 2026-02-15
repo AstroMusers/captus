@@ -113,29 +113,37 @@ def sci_notation_latex(x, pos=None):
     """Format a number as 2.3 × 10^4 for axis labels (LaTeX style)."""
     if x == 0:
         return "0"
-    elif abs(x) >= 1:
+    else:
         exponent = int(np.floor(np.log10(abs(x))))
         coeff = x / 10**exponent
         # Use LaTeX formatting for matplotlib
-        return r"${:.2g} \times 10^{{{}}}$".format(coeff, exponent)
-    elif abs(x) < 1:
-        exponent = int(np.floor(np.log10(abs(x))))
-        coeff = x / 10**exponent
-        return r"${:.2g} \times 10^{{{}}}$".format(coeff, exponent)
-    # else:
-    #     # For small numbers, use standard formatting
-    #     return r"${:.2g}$".format(x)
+        if ((coeff - 1.00) < 1e-3):
+            return r"$10^{{{}}}$".format(exponent)
+        elif (coeff - 10.00) < 1e-3:
+            return r"$10^{{{}}}$".format(exponent + 1)
+        else:
+            return r"${:.1f} \times 10^{{{}}}$".format(coeff, exponent)
     
 def log_tick_formatter(val, pos=None):
         """Format log scale ticks as decimal numbers"""
-
-        if val >= 1:
+        val_linear = 10**val
+        if 10 > val_linear >= 1:
             return f'{val:.0f}'
-        elif val >= 0.1:
+        elif val_linear >= 10:
+            return sci_notation_latex(val_linear)
+        elif 1 >= val_linear >= 0.1:
             return f'{val:.1f}'
-        elif val >= 0.01:
+        elif 0.1 >= val_linear >= 0.01:
             return f'{val:.2f}'
-        elif val == 0:
+        elif val_linear == 0:
             return '0'
         else:
-            return f'{val:.3f}'
+            return sci_notation_latex(val)
+        
+def myLogFormat(y,pos):
+    # Find the number of decimal places required
+    decimalplaces = int(np.maximum(-np.log10(y),0))     # =0 for numbers >=1
+    # Insert that number into a format string
+    formatstring = '{{:.{:1d}f}}'.format(decimalplaces)
+    # Return the formatted tick label
+    return formatstring.format(y)

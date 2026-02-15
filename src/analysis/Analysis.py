@@ -1,7 +1,7 @@
 import os
 import glob
 import numpy as np
-import src.utils.calculations as calc
+import src.utils.calculations_v2 as calc
 from astropy import units as u
 import astropy.constants as const
 import src.configurations.Configuration as config
@@ -98,13 +98,45 @@ class Analysis:
         sorted_keys = sorted(self.mc_results.keys(), key=lambda x: int(x[1:]))  # sort by integer value after 'v'
         for v_key in sorted_keys:
             mc_npz = self.mc_results.get(v_key, None)
-            rebound_npz_list = self.rebound_results.get(v_key, [])
             sampled_mc_results = self.sampled_mc_results.get(v_key, None) if hasattr(self, 'sampled_mc_results') else None
-
             if mc_npz is None or sampled_mc_results is None:
-                print(f"Warning: No MC data for {v_key}, skipping.")
+                print(f"Warning: No MC data for {v_key}.")
                 continue
-            sampled = int(mc_npz['sample_number']) if mc_npz is not None and 'sample_number' in mc_npz else 0
+            #     catalog[v_key] = {
+            #     #Metadata
+            #     "v_inf_m_s": float(mc_npz['v_inf']) if mc_npz is not None else None,
+            #     "v_inf_au_yr": (float(mc_npz['v_inf']) * u.m / u.s).to(u.au / u.yr).value if mc_npz is not None else None,
+            #     "mC": (self.system_param_dict['mC']*u.kg).to(u.M_sun).value,
+            #     "a_au": np.array(mc_npz['a_au']) if mc_npz is not None else None,
+            #     "e": np.array(mc_npz['e']) if mc_npz is not None else None,
+            #     'importance_sampling_size': self.simulation_param_dict['sample_size'],
+            #     'sample_count': 0,
+            #     'capture_count': 0,
+            #     'sampled_capture_count': 0,
+
+            #     # Raw data
+            #     "mc": mc_npz,
+            #     "rebound": [],
+
+            #     # Sampled data
+            #     "sampled_mc": {},
+
+            #     # Compute derived data per-entry
+            #     "termination_counts": {},
+            #     "masks": {},
+            #     "occurrences": self._get_occurrences(mc_npz, {}, {}, []),
+            #     # "averaged_time_series": self._get_time_series(mc_npz, rebound_npz_list, sampled_mc_results, masks),
+
+            #     # Legacy fields for backward compatibility
+            #     "ej_mask": [],
+            #     "coll_mask": [],
+            # }
+
+            #     continue
+            rebound_npz_list = self.rebound_results.get(v_key, [])
+
+
+            sample_number = int(mc_npz['sample_number']) if mc_npz is not None and 'sample_number' in mc_npz else 0
             n_captured = int(mc_npz['n_captured']) if mc_npz is not None and 'n_captured' in mc_npz else 0
             
 
@@ -115,8 +147,10 @@ class Analysis:
                 "v_inf_m_s": float(mc_npz['v_inf']) if mc_npz is not None else None,
                 "v_inf_au_yr": (float(mc_npz['v_inf']) * u.m / u.s).to(u.au / u.yr).value if mc_npz is not None else None,
                 "mC": (self.system_param_dict['mC']*u.kg).to(u.M_sun).value,
+                "a_au": np.array(mc_npz['a_au']) if mc_npz is not None else None,
+                "e": np.array(mc_npz['e']) if mc_npz is not None else None,
                 'importance_sampling_size': self.simulation_param_dict['sample_size'],
-                'sample_count': sampled,
+                'sample_count': sample_number,
                 'capture_count': n_captured,
                 'sampled_capture_count': len(sampled_mc_results['idx']) if sampled_mc_results is not None else 0,
 
@@ -131,7 +165,8 @@ class Analysis:
                 "termination_counts": self._get_termination_counts(rebound_npz_list),
                 "masks": masks,
                 "occurrences": self._get_occurrences(mc_npz, rebound_npz_list, sampled_mc_results, masks),
-                
+                # "averaged_time_series": self._get_time_series(mc_npz, rebound_npz_list, sampled_mc_results, masks),
+
                 # Legacy fields for backward compatibility
                 "ej_mask": masks["ejection"].tolist(),
                 "coll_mask": masks["collision"].tolist(),
@@ -140,11 +175,19 @@ class Analysis:
         # Compute overall statistics
         v_keys = [k for k in catalog.keys() if isinstance(k, str) and k.startswith('v')]
         catalog['total_sample_count'] = sum(catalog[k]['sample_count'] for k in v_keys)
+
         catalog['total_capture_count'] = sum(catalog[k]['capture_count'] for k in v_keys)
         catalog['total_sampled_capture_count'] = sum(catalog[k]['sampled_capture_count'] for k in v_keys)
         # Total occurrences computed once after all entries
         catalog['total_occurrences_trapz'] = self._compute_total_occurrences(catalog)
         catalog['total_occurrences_gl'] = self._integrate_total_occurrences(catalog)
+
+        for v in v_keys:
+            catalog[v]['total_sample_count'] = catalog['total_sample_count']
+            catalog[v]['total_capture_count'] = catalog['total_capture_count']
+            catalog[v]['total_sampled_capture_count'] = catalog['total_sampled_capture_count']
+            catalog[v]['total_occurrences_trapz'] = catalog['total_occurrences_trapz']
+            catalog[v]['total_occurrences_gl'] = catalog['total_occurrences_gl']
         return catalog
 
     def get_mc_results(self):
@@ -159,22 +202,63 @@ class Analysis:
             if n_captured == 0:
                 continue
 
-            # Arrays of per-capture parameters saved by MC
-            a_au = data['a_au']            # shape (n_captured,)
-            e_arr = data['e']              # shape (n_captured,)
-            cap_lambda = data['cap_lambda']# shape (n_captured,)
-            cap_beta = data['cap_beta']    # shape (n_captured,)
-            cap_b = data['cap_b']          # shape (n_captured,) in meters
-            cap_phi = data['cap_phi']      # shape (n_captured,)
+            v_inf=data['v_inf']
+            n_captured=data['n_captured']
+            sigma_MC_m2=data['sigma_MC_m2']
+            sigma_MC_areaB=data['sigma_MC_areaB']
+            a_au=data['a_au']
+            e=data['e']
+            cap_lambda=data['cap_lambda']
+            cap_beta=data['cap_beta']
+            cap_b=data['cap_b']
+            cap_phi=data['cap_phi']
+
             try:
                 epsilon = data['epsilon']
-                sampled = data['sample_number']
+                sample_number=data['sample_number']
+                execution_time=data['execution_time']
+                sigma_MC_dsigma_m2=data['sigma_MC_dsigma_m2']
+                sigma_MC_dsigma_captured_m2=data['sigma_MC_dsigma_captured_m2']
+                sigma_MC_bmax_m2=data['sigma_MC_bmax_m2']
+                b_min=data['b_min']
+                b_max=data['b_max']
+                pos_C=data['cap_C_pos']
+                v_C=data['cap_C_v2']
+                pos_B=data['cap_B_pos']
+                v_B=data['cap_B_v']
+                checks=data['checks']
+                system_energy=data['cap_system_energy']
+                capture_energy=data['cap_capture_energy']
+                capture_crossections=data['capture_cross_sections']  # shape (n_captured,)
+                capture_crossections_captured=data['cap_capture_cross_sections_captured']  # shape (n_captured,)
+                # cap_inclinations=data['cap_inclinations']
+                # cap_anomalies=data['anomalies']
+                collision_cross_sections=data['cap_collision_cross_sections']   # shape (n_captured,)
             except:
                 epsilon = 0.1
-                sampled = 0
-
+                sample_number = 0
+                execution_time = 0.0
+                sigma_MC_dsigma_m2 = np.zeros(n_captured)
+                sigma_MC_dsigma_captured_m2 = np.zeros(n_captured)
+                sigma_MC_bmax_m2 = 0.0
+                b_min = np.zeros(n_captured)
+                b_max = np.zeros(n_captured)
+                collision_cross_sections = np.zeros(n_captured)
+                sampled_collision_cross_section = 0
+                pos_C = np.zeros((n_captured, 3))
+                v_C = np.zeros((n_captured, 3))
+                pos_B = np.zeros((n_captured, 3))
+                v_B = np.zeros((n_captured, 3))
+                capture_crossections = np.zeros(n_captured)
+                capture_crossections_captured = np.zeros(n_captured)
+                checks = np.zeros(n_captured)
+                system_energy = np.zeros(n_captured)
+                capture_energy = np.zeros(n_captured)
+                collision_cross_sections = np.zeros(n_captured)
+                # cap_inclinations = np.zeros(n_captured)   
+                # cap_anomalies = np.zeros(n_captured)
             # Sanity: all arrays must have length n_captured
-            assert len(a_au) == len(e_arr) == len(cap_lambda) == len(cap_beta) == len(cap_b) == len(cap_phi) == n_captured
+            assert len(a_au) == len(e) == len(cap_lambda) == len(cap_beta) == len(cap_b) == len(cap_phi) == n_captured
 
 
             if n_captured <= self.mc_sample_size:
@@ -182,20 +266,39 @@ class Analysis:
             else:
                 idx = self.rng.choice(n_captured, size=self.mc_sample_size, replace=False)
 
-            # Slice consistently
             sampled_mc[v] = {
-                'v_inf': float(data['v_inf']),             # m/s
+                'v_inf': float(v_inf),             # m/s
                 'a_au': a_au[idx],
-                'e': e_arr[idx],
+                'e': e[idx],
                 'lambda1': cap_lambda[idx],
                 'beta': cap_beta[idx],
                 'b': cap_b[idx],                         # meters (convert in OrbitalSimulation)
                 'phi': cap_phi[idx],
+                # 'inclinations': cap_inclinations[idx],
+                # 'anomalies': cap_anomalies[idx],
+                'pos_C': pos_C[idx],
+                'v_C': v_C[idx],
+                'pos_B': pos_B[idx],
+                'v_B': v_B[idx],
                 'epsilon': epsilon,
+                'checks': checks,
+                'system_energy': system_energy[idx],
+                'capture_energy': capture_energy[idx],
                 'idx': idx,
                 'total_capture_count': n_captured,
-                'total_sample_count': sampled,
+                'total_sample_count': sample_number,
                 'sampled_capture_count': len(idx),
+                'execution_time': execution_time,
+                'sigma_MC_m2': sigma_MC_m2,
+                'sigma_MC_areaB': sigma_MC_areaB,
+                'sigma_MC_dsigma_m2': sigma_MC_dsigma_m2,
+                'sigma_MC_dsigma_captured_m2': sigma_MC_dsigma_captured_m2,
+                'sigma_MC_bmax_m2': sigma_MC_bmax_m2,
+                'capture_cross_sections': capture_crossections[idx],
+                'capture_cross_sections_captured': capture_crossections_captured[idx],
+                'b_min': b_min[idx],
+                'b_max': b_max[idx],
+                'collision_cross_sections': collision_cross_sections[idx],
             }
             print(f'v_inf = {v} km/s: sampled {len(idx)} captured objects')
         return sampled_mc
@@ -369,45 +472,112 @@ class Analysis:
         """
         ej_mask = []
         coll_mask = []
+        complete_with_termination_mask = []
+        complete_mask = []
         
         for entry in rebound_list:
             if "termination_flag" not in entry.files:
                 ej_mask.append(0)
                 coll_mask.append(0)
+                complete_with_termination_mask.append(0)
+                complete_mask.append(0)
                 continue
                 
             flag = self._as_scalar(entry["termination_flag"])
-            
-            if flag is None:
-                coll_mask.append(0)
-                ej_mask.append(0)
-            elif isinstance(flag, str) and 'escape_C' in flag:
+
+            if isinstance(flag, str) and 'escape_C' in flag:
                 ej_mask.append(1)
                 coll_mask.append(0)
+                complete_with_termination_mask.append(1)
+                complete_mask.append(0)
             elif isinstance(flag, str) and 'collision' in flag:
                 ej_mask.append(0)
                 coll_mask.append(1)
+                complete_with_termination_mask.append(1)
+                complete_mask.append(0)
+            elif isinstance(flag, str) and 'completed' in flag:
+                ej_mask.append(0)
+                coll_mask.append(0)
+                complete_with_termination_mask.append(0)
+                complete_mask.append(1)
             else:
                 ej_mask.append(0)
                 coll_mask.append(0)
-                
+                complete_with_termination_mask.append(0)
+                complete_mask.append(0)
+
         ej_arr = np.array(ej_mask, dtype=int)
         coll_arr = np.array(coll_mask, dtype=int)
-        
+        complete_with_termination_arr = np.array(complete_with_termination_mask, dtype=int)
+        complete_arr = np.array(complete_mask, dtype=int)
+
         return {
             "ejection": ej_arr,
             "collision": coll_arr,
-            "termination": ej_arr + coll_arr,
+            "termination": complete_with_termination_arr,
+            "completed": complete_arr,
         }
     
+    def get_cross_sections(self):
+        catalog = self.results_dictionary
+        self._integrate_cross_sections(catalog)
+        return
+
+    def _integrate_cross_sections(self, catalog):
+        """
+        Integrate cross-sections over v_inf using Gaussian-Legendre quadrature.
+        """
+
+        v_keys = sorted([k for k in catalog.keys() if isinstance(k, str) and k.startswith('v')],
+                        key=lambda x: int(x[1:]))
+
+        v_inf_values = [catalog[k]['v_inf_au_yr'] for k in v_keys]
+        cross_section = [catalog[k]['sampled_mc']['sigma_MC_m2'] * (u.m**2).to(u.au**2).value for k in v_keys]
+        cross_section_dsigma = [catalog[k]['sampled_mc']['sigma_MC_dsigma_m2'] * (u.m**2).to(u.au**2).value for k in v_keys]
+        cross_section_dsigma_captured = [catalog[k]['sampled_mc']['sigma_MC_dsigma_captured_m2'] * (u.m**2).to(u.au**2).value for k in v_keys]
+        cross_section_bmax = [catalog[k]['sampled_mc']['sigma_MC_bmax_m2'] * (u.m**2).to(u.au**2).value for k in v_keys]
+
+    
+
     def _get_occurrences(self, mc_npz, rebound_list, sampled_mc, masks):
         """
         Compute occurrence metrics for a single v bin.
         Pure function: takes inputs, returns occurrences dict.
         """
+
+        if sampled_mc == {} or sampled_mc is None:
+            return {
+            "n_captured": 0,
+            "n_sampled": 0,
+            "n_sampled_captures": 0,
+            "n_ejected": 0,
+            "n_collided": 0,
+            "n_terminated": 0,
+            "capture_cross_section_total": 0.0,
+            "capture_cross_section_ejected": 0.0,
+            "capture_cross_section_collided": 0.0,
+            "capture_cross_section_terminated": 0.0,
+            "capture_cross_section_total_areaB": 0.0,
+            "capture_rate": 0.0,
+            "ejection_rate": 0.0,
+            "collision_rate": 0.0,
+            "termination_rate": 0.0,
+            "total_rate": 0.0,
+            "terminated_systems_neq": 0,
+            "ejected_systems_neq": 0,
+            "collided_systems_neq": 0,
+            "total_systems_neq": 0,
+            "total_systems_neq_2": 0,
+            "average_lifetime_ejected": 0.0,
+            "average_lifetime_collided": 0.0,
+            "average_lifetime_terminated": 0.0,
+            "average_lifetime_total": 0.0,
+
+            }
         ej_mask = masks["ejection"]
         coll_mask = masks["collision"]
         term_mask = masks["termination"]
+        complete_mask = masks["completed"]
         
         mA = self.system_param_dict["mA"]
         mB = self.system_param_dict["mB"]   
@@ -426,6 +596,7 @@ class Analysis:
         vdm = (vdm*u.m/u.s).to(u.au/u.yr).value
         b_max = (rClose * u.m).to(u.au).value
         b_max_sampled = np.max(b_au)
+        b_min_sampled = np.min(b_au)
         vinfinity = (mc_npz["v_inf"]*u.m/u.s).to(u.au/u.yr).value
         vBVec = calc.v_B_vec(vBMag, sampled_mc["lambda1"])
         v1Vec = calc.v_1_vec(v1Mag, sampled_mc["lambda1"], sampled_mc["beta"])
@@ -434,9 +605,10 @@ class Analysis:
         vesc = calc.v_esc(muA, aB)
         b_min = calc.b_min(muB, rB, v1primeMag)
         b_min = (b_min * u.m).to(u.au).value
-
-        
+        # sigma_cap = (sampled_mc["sigma_MC_dsigma_captured_m2"] * u.m**2).to(u.au**2).value
+        # sigma_cap = np.sum((sampled_mc["capture_cross_sections_captured"]* u.m**2).to(u.au**2).value)  # already in au^2
         n_captured = int(sampled_mc["total_capture_count"])
+
         try:
             n_sampled = int(sampled_mc["total_sample_count"])
         except KeyError:
@@ -446,9 +618,17 @@ class Analysis:
         except KeyError:
             n_sampled_captures = 0
 
+        sigma_cap =  2 * np.pi * (np.max(b_au)-np.min(b_au)) * np.sum(np.array(b_au)) / n_sampled
+        sigma_cap_2 = np.pi * (b_max_sampled**2 - b_min_sampled**2)  * (n_captured / n_sampled)  # in au^2
+
         n_ejected = int(np.sum(ej_mask))
         n_collided = int(np.sum(coll_mask))
         n_terminated = int(np.sum(term_mask))
+        n_completed = int(np.sum(complete_mask))
+        frac_ejected = n_ejected / n_sampled if n_sampled > 0 else 0.0
+        frac_collided = n_collided / n_sampled if n_sampled > 0 else 0.0
+        frac_terminated = n_terminated / n_sampled if n_sampled > 0 else 0.0
+        frac_completed = n_completed / n_sampled if n_sampled > 0 else 0.0
 
         # if self.importance_sampling == True:
         #     print("Using importance sampling for cross-section calculation.")
@@ -461,34 +641,40 @@ class Analysis:
         # R, b = calc.crossec_circle_R_b(v1Mag,  vBMag, vBVec, v1primeMag, v1primeVec, vesc, muB)
         # collision_cross_section_total = np.pi * b_min**2
         # capture_cross_section_total = (mc_npz["sigma_MC_m2"] * u.m**2).to(u.au**2).value
-        capture_cross_section_total = (mc_npz["sigma_MC_m2"] * u.m**2).to(u.au**2).value
+        capture_cross_section_total = sigma_cap 
+        capture_cross_section_total_2 = sigma_cap_2
         # capture_cross_section_exclude_coll = capture_cross_section_total - ((capture_cross_section_total/b_max**2) * b_min**2)  # in au^2
         capture_cross_section_ejected = ((n_ejected / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0
         capture_cross_section_collided = ((n_collided / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0
         capture_cross_section_terminated = ((n_terminated / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0
+        capture_cross_section_completed = ((n_completed / n_sampled_captures) * capture_cross_section_total) if n_sampled > 0 else 0.0
 
         lifetimes = [e["lifetime"] for e in rebound_list if "lifetime" in e.files]
         ejected_lifetimes = [l for l, ej in zip(lifetimes, ej_mask) if ej == 1]
         collided_lifetimes = [l for l, coll in zip(lifetimes, coll_mask) if coll == 1]
         terminated_lifetimes = [l for l, term in zip(lifetimes, term_mask) if term == 1]
+        
+        
 
         total_rate = (len([l for l in lifetimes if l is not None]) / 
                       np.sum([l for l in lifetimes if l is not None])) if len(lifetimes) > 0 else 0.0
-        ejection_rate = (len([l for l in ejected_lifetimes if l is not None]) /
+        ejection_rate = frac_ejected*(len([l for l in ejected_lifetimes if l is not None]) /
                         np.sum([l for l in ejected_lifetimes if l is not None])) if len(ejected_lifetimes) > 0 else 0.0
-        collision_rate = (len([l for l in collided_lifetimes if l is not None]) / 
+        collision_rate = frac_collided*(len([l for l in collided_lifetimes if l is not None]) / 
                          np.sum([l for l in collided_lifetimes if l is not None])) if len(collided_lifetimes) > 0 else 0.0
-        termination_rate = (len([l for l in terminated_lifetimes if l is not None]) / 
+        termination_rate = frac_terminated*(len([l for l in terminated_lifetimes if l is not None]) / 
                            np.sum([l for l in terminated_lifetimes if l is not None])) if len(terminated_lifetimes) > 0 else 0.0
+        
         
         f_approx = (np.sqrt(2/np.pi)) * (vinfinity**2 / (vdm**3)) * np.exp(- (vinfinity)**2/(2*vdm**2))
         # f_approx = (vinfinity**2 / (vdm**3))
-
+        capture_rate = f_approx * capture_cross_section_total * v1Mag_au
+        capture_rate_2 = f_approx * capture_cross_section_total_2 * v1Mag_au
         neq_ejected = f_approx * capture_cross_section_ejected * v1Mag_au / ejection_rate if ejection_rate > 0 else 0.0
         neq_collided = f_approx * capture_cross_section_collided * v1Mag_au / collision_rate if collision_rate > 0 else 0.0
         neq_terminated = f_approx * capture_cross_section_terminated * v1Mag_au / termination_rate if termination_rate > 0 else 0.0
         neq_total = f_approx * capture_cross_section_total * v1Mag_au / total_rate if total_rate > 0 else 0.0
-        
+        neq_total_2 = f_approx * capture_cross_section_total_2 * v1Mag_au / total_rate if total_rate > 0 else 0.0
         return {
             "n_captured": n_captured,
             "n_sampled": n_sampled,
@@ -497,10 +683,12 @@ class Analysis:
             "n_collided": n_collided,
             "n_terminated": n_terminated,
             "capture_cross_section_total": capture_cross_section_total,
+            "capture_cross_section_total_2": capture_cross_section_total_2,
             "capture_cross_section_ejected": capture_cross_section_ejected,
             "capture_cross_section_collided": capture_cross_section_collided,
             "capture_cross_section_terminated": capture_cross_section_terminated,
             "capture_cross_section_total_areaB": mc_npz["sigma_MC_areaB"],
+            "capture_rate": capture_rate,
             "ejection_rate": ejection_rate,
             "collision_rate": collision_rate,
             "termination_rate": termination_rate,
@@ -509,6 +697,7 @@ class Analysis:
             "ejected_systems_neq": neq_ejected,
             "collided_systems_neq": neq_collided,
             "total_systems_neq": neq_total,
+            "total_systems_neq_2": neq_total_2,
             "average_lifetime_ejected": np.mean(ejected_lifetimes) if len(ejected_lifetimes) > 0 else None,
             "average_lifetime_collided": np.mean(collided_lifetimes) if len(collided_lifetimes) > 0 else None,
             "average_lifetime_terminated": np.mean(terminated_lifetimes) if len(terminated_lifetimes) > 0 else None,
@@ -533,6 +722,8 @@ class Analysis:
                 "ejected_systems_neq": 0.0,
                 "collided_systems_neq": 0.0,
                 "total_systems_neq": 0.0,
+                "total_systems_neq_2": 0.0
+
             }
         
         total_captured = sum([catalog[v]['occurrences']["n_captured"] for v in v_keys if 'occurrences' in catalog[v]])
@@ -544,11 +735,13 @@ class Analysis:
         # Use canonical v_inf_au_yr from catalog entries (no nested lookup needed)
         x_vals = [catalog[v]['v_inf_au_yr'] for v in v_keys if 'v_inf_au_yr' in catalog[v] and 'occurrences' in catalog[v]]
         y_total = [catalog[v]['occurrences']["total_systems_neq"] for v in v_keys if 'occurrences' in catalog[v]]
+        y_total_2 = [catalog[v]['occurrences']["total_systems_neq_2"] for v in v_keys if 'occurrences' in catalog[v]]
         y_collided = [catalog[v]['occurrences']["collided_systems_neq"] for v in v_keys if 'occurrences' in catalog[v]]
         y_ejected = [catalog[v]['occurrences']["ejected_systems_neq"] for v in v_keys if 'occurrences' in catalog[v]]
         y_terminated = [catalog[v]['occurrences']["terminated_systems_neq"] for v in v_keys if 'occurrences' in catalog[v]]
         
         total_systems_neq = calc.integrate_trapezoidal(x=x_vals, y=y_total)
+        total_systems_neq_2 = calc.integrate_trapezoidal(x=x_vals, y=y_total_2)
         collided_systems_neq = calc.integrate_trapezoidal(x=x_vals, y=y_collided)
         ejected_systems_neq = calc.integrate_trapezoidal(x=x_vals, y=y_ejected)
         terminated_systems_neq = calc.integrate_trapezoidal(x=x_vals, y=y_terminated)
@@ -563,6 +756,7 @@ class Analysis:
             "ejected_systems_neq": ejected_systems_neq,
             "collided_systems_neq": collided_systems_neq,
             "total_systems_neq": total_systems_neq,
+            "total_systems_neq_2": total_systems_neq_2,
         }
 
     def _integrate_total_occurrences(self, catalog):
@@ -577,6 +771,7 @@ class Analysis:
         """
         x_vals = []
         y_total = []
+        y_total_2 = []
         y_collided = []
         y_ejected = []
         y_terminated = []
@@ -601,6 +796,7 @@ class Analysis:
                     continue
 
             total_neq = occ.get('total_systems_neq')
+            total_neq_2 = occ.get('total_systems_neq_2')
             collided_neq = occ.get('collided_systems_neq')
             ejected_neq = occ.get('ejected_systems_neq')
             terminated_neq = occ.get('terminated_systems_neq')
@@ -615,15 +811,17 @@ class Analysis:
                     return float(val)
 
             t = _f(total_neq)
+            t2 = _f(total_neq_2)
             c = _f(collided_neq)
             e = _f(ejected_neq)
             r = _f(terminated_neq)
 
-            if not (np.isfinite(x) and np.isfinite(t) and np.isfinite(c) and np.isfinite(e) and np.isfinite(r)):
+            if not (np.isfinite(x) and np.isfinite(t) and np.isfinite(t2) and np.isfinite(c) and np.isfinite(e) and np.isfinite(r)):
                 continue
 
             x_vals.append(x)
             y_total.append(t)
+            y_total_2.append(t2)
             y_collided.append(c)
             y_ejected.append(e)
             y_terminated.append(r)
@@ -631,6 +829,7 @@ class Analysis:
         if len(x_vals) == 0:
             return {
                 'total_systems_neq_gl': 0.0,
+                'total_systems_neq_2_gl': 0.0,
                 'collided_systems_neq_gl': 0.0,
                 'ejected_systems_neq_gl': 0.0,
                 'terminated_systems_neq_gl': 0.0,
@@ -640,23 +839,44 @@ class Analysis:
         order = np.argsort(x_vals)
         x = np.asarray(x_vals)[order]
         y_total = np.asarray(y_total)[order]
+        y_total_2 = np.asarray(y_total_2)[order]
         y_collided = np.asarray(y_collided)[order]
         y_ejected = np.asarray(y_ejected)[order]
         y_terminated = np.asarray(y_terminated)[order]
 
         total_gl = calc.integrate_gauss_legendre(x, y_total, n=16)
+        total_2_gl = calc.integrate_gauss_legendre(x, y_total_2, n=16)
         collided_gl = calc.integrate_gauss_legendre(x, y_collided, n=16)
         ejected_gl = calc.integrate_gauss_legendre(x, y_ejected, n=16)
         terminated_gl = calc.integrate_gauss_legendre(x, y_terminated, n=16)
 
         return {
             'total_systems_neq_gl': total_gl,
+            'total_systems_neq_2_gl': total_2_gl,
             'collided_systems_neq_gl': collided_gl,
             'ejected_systems_neq_gl': ejected_gl,
             'terminated_systems_neq_gl': terminated_gl,
             'v_bins_used': int(len(x)),
         }
+    
+    def _get_time_series(self, mc_npz, rebound_list, sampled_mc, masks):
+        """
+        Compute averaged time series for a single v bin.
+        Pure function: takes inputs, returns time series dict.
+        """
 
+        semi_major_axis_averages = [float(np.mean(m['semi_major_axes'])) for m in rebound_list if np.size(m['semi_major_axes']) > 0]
+        eccentricity_averages = [float(np.mean(m['eccentricities'])) for m in rebound_list if np.size(m['eccentricities']) > 0]
+        orbital_period_averages = [float(np.mean(m['orbital_periods'])) for m in rebound_list if np.size(m['orbital_periods']) > 0]
+        lifetimes = [float(m['lifetime']) for m in rebound_list if 'lifetime' in m.files]
+
+        return {
+            "semi_major_axis_averages": semi_major_axis_averages,
+            "eccentricity_averages": eccentricity_averages,
+            "orbital_period_averages": orbital_period_averages,
+            "lifetimes": lifetimes,
+        }
+    
     def print_total_occurrences_summary_trapz(self):
         """User-facing summary printer based on Gauss-Legendre integration."""
         res = self.results_dictionary.get('total_occurrences_trapz', {})
@@ -687,14 +907,21 @@ class Analysis:
         v_keys = [k for k in catalog.keys() if isinstance(k, str) and k.startswith('v')]
 
         for k in v_keys:
-            sampled = catalog[k].get("sampled_mc")
-            total_capture_count = sampled.get("total_capture_count") if sampled else 0
-            total_sample_count = sampled.get("total_sample_count") if sampled else 0
-            sampled_capture_count = sampled.get("sampled_capture_count") if sampled else 0
+            smc = catalog[k].get("sampled_mc")
+            if smc == {} or smc is None:
+                print(f'Velocity bin: {k} has no sampled MC data.')
+                print("--------------------------------")
+                continue
+            total_capture_count = smc.get("total_capture_count") if smc else 0
+            total_sample_count = smc.get("total_sample_count") if smc else 0
+            sampled_cross_section = smc.get("sampled_collision_cross_section") if np.sum(smc.get("collision_cross_sections"))>0 else 0.0
+            sampled_capture_count = smc.get("sampled_capture_count") if smc else 0
+
 
             print(
                 f'Velocity bin: {k}, sampled capture count {sampled_capture_count} '
                 f'total capture count: {total_capture_count} out of {total_sample_count} samples'
+                f', sampled cross section size: {sampled_cross_section}'
             )
 
             term_counts = catalog[k].get('termination_counts', {})
@@ -732,6 +959,17 @@ class Analysis:
             for flag, count in catalog['total_occurrences'].items():
                 print(f"    {flag}: {count}")
             print("--------------------------------")
+
+    def print_termination_counts_summary(self):
+
+        catalog = self.results_dictionary
+        print("Termination counts summary:")
+        for k in [k for k in catalog.keys() if isinstance(k, str) and k.startswith('v')]:
+            if 'termination_counts' in catalog[k]:
+                print(f'Velocity bin: {k}')
+                for flag, count in catalog[k]['termination_counts'].items():
+                    print(f"    {flag}: {count}")
+                print("--------------------------------")
 
     def _rebound_entries(self, v_key):
         """Return the list of npz entries for given velocity key."""

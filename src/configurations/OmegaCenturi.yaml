@@ -1,0 +1,23 @@
+---
+system_param_dict:
+  mA: 1.6304960939724018e+34     # float
+  mB: 1.988409870698051e+31      # float
+  mC: 1.988409870698051e+29      # float
+  aB: 92562705350480.95   # float
+  rB: 3478500000.0    # float
+  vB: 110000.0               # float
+  eB: 0.2                    # float
+  iB: 0       # float
+  epsilon: 0.05947540101248887 # float
+  seed_base: 42                 # int
+v_inf_grid_params: 
+  min_v: 1000  # Minimum incoming velocity in m/s
+  max_v: 339385.72  # Maximum incoming velocity in m/s
+  n_v: 10  # Number of samples for incoming velocity
+simulation_param_dict:
+  trials: 10000000        # int
+  max_trials: 100000000   # int
+  max_execution_time: 3600  # int, in seconds
+  sample_size: 100        # int
+  max_e: 1.00          # float
+  vDM: 220000.0          # float
