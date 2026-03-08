@@ -5,8 +5,9 @@ from operator import itemgetter
 import re
 import matplotlib.pyplot as plt
 
-plt.rcParams.update({'font.family': 'serif', 'font.size': 10, 'axes.labelsize': 10, 'axes.titlesize': 12,
-                     'legend.fontsize': 9, 'xtick.labelsize': 9, 'ytick.labelsize': 9})
+plt.rcParams['text.usetex'] = True
+plt.rcParams.update({'font.family': 'serif', 'font.size': 12, 'axes.labelsize': 12, 'axes.titlesize': 12,
+                     'legend.fontsize': 9, 'xtick.labelsize': 10, 'ytick.labelsize': 10})
 def latex_label_key(s: str) -> str:
     # extract the first {...} group; fallback to cleaned text
     m = re.search(r"\{([^}]+)\}", s)
@@ -116,11 +117,18 @@ def sci_notation_latex(x, pos=None):
     else:
         exponent = int(np.floor(np.log10(abs(x))))
         coeff = x / 10**exponent
+        print(f"Formatting {x:.2e} as {coeff:.2f} × 10^{exponent}")
         # Use LaTeX formatting for matplotlib
         if ((coeff - 1.00) < 1e-3):
-            return r"$10^{{{}}}$".format(exponent)
+            return r"10$^{{{}}}$".format(exponent)
         elif (coeff - 10.00) < 1e-3:
-            return r"$10^{{{}}}$".format(exponent + 1)
+            return r"10$^{{{}}}$".format(exponent + 1)
+        # elif exponent == 0:
+        #     return f"{x:.1f}"
+        # elif exponent == 1:
+        #     return f"{x*10:.1f}"
+        # elif exponent == -1:
+        #     return f"{x/10:.1f}"
         else:
             return r"${:.1f} \times 10^{{{}}}$".format(coeff, exponent)
     

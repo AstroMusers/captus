@@ -4,7 +4,8 @@ system_param_dict:
   mB: 1.988409870698051e+31      # float
   mC: 1.988409870698051e+29      # float
   aB: 92562705350480.95   # float
-  rB: 3478500000.0    # float
+  rA: 24216650.624022048 # schwarzchild radius calculated
+  rB: 3478500000.0  # 5x R sun 
   vB: 110000.0               # float
   eB: 0.2                    # float
   iB: 0       # float

@@ -34,11 +34,11 @@ class OrbitalSimulation:
         self.mC = (self.sys_par['mC']*u.kg).to(u.Msun).value
         self.epsilon = self.sys_par.get('epsilon', 0.1)
         self.aB = (self.sys_par['aB'] * u.m).to(u.au).value
-        self.rA = (self.sys_par.get('rA', 0.0) * u.m).to(u.au).value if self.sys_par.get('rA') else 0.0
+        self.rA = (self.sys_par['rA'] * u.m).to(u.au).value
         self.rB = (self.sys_par['rB'] * u.m).to(u.au).value
-        self.rC = (self.sys_par.get('rC', 0.0) * u.m).to(u.au).value if self.sys_par.get('rC') else 0.0
-        self.eB = self.sys_par.get('eB', 0.0489)  # default Jupiter eccentricity
-        self.iB = self.sys_par.get('iB', 0.0)  # default Jupiter inclination in radians
+        self.rC = (self.sys_par['rC'] * u.m).to(u.au).value
+        self.eB = self.sys_par['eB']  # default Jupiter eccentricity
+        self.iB = self.sys_par['iB']  # default Jupiter inclination in radians
         self.name = self.sys_par['name']
         self.seed_base = self.sys_par['seed_base']
         self.max_execution_time = self.sim_par['max_execution_time'] # in seconds
@@ -90,45 +90,24 @@ class OrbitalSimulation:
         print(f"Running Rebound_v3.py, last modified on {version}")
     
 
-    def run_orbital_integration(self, i, v_inf, lambda1, beta, phi, b, pos_C, v_C, pos_B, v_B, a_c, e_c, check_exists=True):
+    def run_orbital_integration(self, i, v_inf, lambda1, beta, phi, b, pos_C, v_C, pos_B, v_B):
 
         # if check_exists:
         #     if self._check_result_exists(v_inf / 1e3, i):
         #         print(f"Simulation {i} for v_inf {v_inf/1e3} km/s already exists. Skipping...")
         #         return
-        input_info = {'i': i, 'v_inf': v_inf, 'lambda1': lambda1, 'beta': beta, 'phi': phi, 'b': b, 'pos_C': pos_C, 'v_C': v_C, 'pos_B': pos_B, 'v_B': v_B, 'a_c': a_c, 'e_c': e_c}
+        input_info = {'i': i, 'v_inf': v_inf, 'lambda1': lambda1, 'beta': beta, 'phi': phi, 'b': b, 'pos_C': pos_C, 'v_C': v_C, 'pos_B': pos_B, 'v_B': v_B}
         
-        rng_R = self.rng  # Different seed for each process
-
         print(f"Simulation {i} of starting at {datetime.datetime.now()}")
-
-        epsilon = self.epsilon
-        # Convert impact parameter from meters to AU (MC upstream is in SI)
-        b = (b*u.m).to(u.au).value
-        rclose = self.rClose
-
-        eB = 0.0
-        eC = e_c  # from MC
 
         mA = self.mA  # Msun
         mB = self.mB  # Jupiter mass in Msun
         mC = self.mC  # PBH mass in Msun
 
         # Radii in AU
-        rA = self.rA
+        rA = self.rA 
         rB = self.rB
         rC = self.rC # PBH radius in AU for 1e-13 Msun
-
-        # Semi-major axis in AU
-        aB = self.aB   # Jupiter semi-major axis in AU
-        aC = a_c  # from MC in AU
-
-        # iB = self.iB  # Jupiter inclination in radians
-        # iB = 0.0  # Jupiter inclination in radians
-        # # iC = rng_R.uniform(0, np.pi)  # PBH inclination in radians
-        # iC = beta2  # PBH inclination in radians
-        # thetaB = lambda1  # Jupiter argument of latitude in radians
-        # fC = anomalies  # PBH true anomaly (where it is in its orbit)
 
         # Velocity at infinity in AU/yr
         v_inf_kms = v_inf / 1e3  # km/s
@@ -141,9 +120,9 @@ class OrbitalSimulation:
         sim = rebound.Simulation()
         sim.units = ('AU', 'yr', 'Msun')
         sim.integrator = "MERCURIUS"
-        sim.add(m=mA, r=rA)  # Sun
-        sim.add(m=mB, x=pos_B[0], y=pos_B[1], z=pos_B[2], vx=v_B[0], vy=v_B[1], vz=v_B[2])  # Jupiter
-        sim.add(m=mC, x=pos_C[0], y=pos_C[1], z=pos_C[2], vx=v_C[0], vy=v_C[1], vz=v_C[2])  # PBH
+        sim.add(m=mA, r=rA, x=0, y=0, z=0)  # Sun
+        sim.add(m=mB, r=rB, x=pos_B[0], y=pos_B[1], z=pos_B[2], vx=v_B[0], vy=v_B[1], vz=v_B[2])  # Jupiter
+        sim.add(m=mC, r=rC, x=pos_C[0], y=pos_C[1], z=pos_C[2], vx=v_C[0], vy=v_C[1], vz=v_C[2])  # PBH
 
         G_unit = sim.G  # 4*pi^2 in these units
         sim.move_to_com()
@@ -152,34 +131,6 @@ class OrbitalSimulation:
         e_init = sim.particles[2].orbit(primary=sim.particles[0]).e
         E_init = sim.energy()
 
-        # # Compute params in AU/yr/Msun
-        muA = G_unit * mA
-        muB = G_unit * mB
-        # v1Mag = calcs.v_1_mag(v_inf, muA, muB, aB, rclose)
-
-        # # Build incoming velocity vector in AU/yr
-        # v1Vec = calcs.v_1_vec(v1Mag, lambda1, beta)  # returns 3-vector consistent with our convention
-        # v1_normalised = v1Vec / np.linalg.norm(v1Vec)
-
-        # vBVec = np.array(sim.particles[1].vxyz)  # AU/yr
-        # vBMag = np.linalg.norm(vBVec)
-
-        # v1prime = calcs.v_1_prime_vec(v1Vec, vBVec, lambda1, beta)
-        # v1primeMag = np.linalg.norm(v1prime)
-
-        # if v1primeMag == 0:
-        #     vprimemag_error = True
-        # else:
-        #     vprimemag_error = False
-
-        # # # Impact parameter limits in AU
-        # bmax = rclose
-        # bmin = calcs.b_min(muB, rB, v1primeMag)
-
-        # if (b < bmin) or (b > bmax) or (bmax < bmin):
-        #     b_error = True
-        # else:
-        #     b_error = False
         error_list = []
         if E_init >= 0:
             error_list.append('system not bound at start')
@@ -382,18 +333,6 @@ class OrbitalSimulation:
             print(f"Final plotting error: {e}, Simulation for system {i}. Continuing without plotting...")
             pass
 
-        # result = {
-        #     "i": i,
-        #     "start_info": start_info,
-        #     "errors": error_list,
-        #     "start_distances": start_separation,
-        #     "lifetime": sim.t,
-        #     "final_energy_c": E_c_cond,
-        #     "termination_flag": flag,
-        #     "eccentricities": np.array(eccentricities, dtype=float),
-        #     "semi_major_axes": np.array(semi_major_axes, dtype=float),
-        #     'times': np.array(times, dtype=float),
-        # }
 
         result = [i, v_inf, input_info, error_list, a_init, e_init, E_init, start_separation, sim.t, j, E_c_cond, flag,
                   np.array(eccentricities, dtype=float), np.array(semi_major_axes, dtype=float),

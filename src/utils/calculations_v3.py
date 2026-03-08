@@ -4,7 +4,7 @@ import numpy as np
 from numpy.polynomial.legendre import leggauss
 from numpy import linalg
 from scipy.optimize import brentq, minimize_scalar
-
+from astropy import units as u
 
 def schwarzchild_radius(mass):
     """Calculate the Schwarzschild radius for a given mass.
@@ -406,7 +406,7 @@ def v_1_mag(v_inf, muA, muB, rAB, rClose):
     term2 = (2 * muB / rClose)
     return np.sqrt(term1 + term2)
 
-def v_1_vec(v1Mag, lambda_1, beta_1):
+def v_1_vec(v1Mag, beta_1):
     """
     Incoming velocity v1.
     Parameters
@@ -725,7 +725,7 @@ def a_e(muA, specE2, specL2):
         a
     """
     a = - muA / (2*specE2)
-    e = np.sqrt(1 + (2*specE2*specL2**2)/(muA**2))
+    e = np.sqrt(1 - (specL2**2) / (muA * a))
     return a, e
 
 def beta_2(L_vec, vBVec, rABVec):
@@ -773,6 +773,25 @@ def capture_cross_section(b_min, b_max):
         σ_cap
     """
     return np.pi * (b_max**2 - b_min**2)
+
+def capture_cross_section_MC(b, n_sampled):
+    """
+    Monte Carlo estimate of capture cross-section σ_cap.
+
+    Parameters
+    ----------
+    b_au : float
+        Maximum impact parameter in astronomical units.
+    n_sampled : int
+        Number of Monte Carlo samples.
+
+    Returns
+    -------
+    float
+        σ_cap
+    """
+    b_au = (np.array(b)*u.m).to(u.au)  # Convert b from meters to astronomical units
+    return 2 * np.pi * (np.max(b_au)-np.min(b_au)) * np.sum(b_au) / n_sampled
 
 def b_unit_vector( v1primeMag, v1primeVec, phi):
     """
@@ -909,7 +928,8 @@ def integrate_gauss_legendre(x, y, n=100, exclude_zeros=True):
 def equation(b, v1primeVec, v1primeMag, vBVec, muB, phi, potential_energy, rclose):
     # Returns positive when GW loss < KE (no capture)
     # Returns negative when GW loss > KE (capture possible)
-    v2Vec = v_2_vec(v1primeVec, v1primeMag, vBVec, muB, b, phi)
+    v2primeVec = v_2_prime_vec(v1primeVec, v1primeMag, muB, b, phi)
+    v2Vec = v_2_vec(v2primeVec=v2primeVec, vBVec=vBVec)
     v2Mag = v_2_mag(v2Vec)
 
     E2_val = 0.5 * v2Mag**2 + potential_energy
@@ -974,46 +994,46 @@ def rodrigues_rotate(v, k, angle):
     ca, sa = np.cos(angle), np.sin(angle)
     return v*ca + np.cross(k, v)*sa + k*np.dot(k, v)*(1-ca)
 
-def exit_point_from_scatter(v1primeVec, v2primeVec, bVec, muB, rClose, b=None, psi=None):
+def exit_point_from_scatter(v1primeMag, v1primeVec, bVec, muB, rClose, b):
     """
     Returns r_exit (3-vector) in the B frame.
 
     Provide either impact parameter b or deflection angle psi.
     v1, v2 are asymptotic velocities (3-vectors).
     """
-    s_in  = unit(v1primeVec)
-    v_inf = np.linalg.norm(v1primeVec)
-    e = np.sqrt(1.0 + (b * v_inf**2 / muB)**2)
+    a_hyp = -muB / v1primeMag**2  # negative for hyperbola
+    e = np.sqrt(1.0 + (b * v1primeMag**2 / muB)**2)
+    l = a_hyp * (1 - e**2)
+    rp = -a_hyp * (e - 1)   # periapsis distance (positive)
 
-
-    # semi-latus rectum
-    p = (b**2 * v_inf**2) / muB
-
-    # theta_exit
-    cos_th = (p / rClose - 1.0) / e
-    if abs(cos_th) > 1.0:
-        raise ValueError(f"Invalid geometry: cos(theta_exit)={cos_th} not in [-1,1].")
-    theta_exit = np.arccos(cos_th)  # outgoing branch: + arccos
-
-    # plane normal
-    n = np.cross(bVec, s_in)
-    nn = np.linalg.norm(n)
-    if nn == 0:
-        raise ValueError("v1 and v2 are colinear; scattering plane undefined.")
-    n_hat = n / nn
-
-    # theta_infty
-    theta_inf = np.arccos(-1.0/e)
-
-    # periapsis direction
-    p_hat = rodrigues_rotate(s_in, n_hat, -theta_inf)
+    s_in = unit(v1primeVec)
+    n_hat = unit(np.cross(bVec, s_in))  # normal to orbital plane
+    theta = np.arccos(1.0/e)  # angle of asymptote with respect to periapsis direction
+    # periapsis direction: p_hat is at angle -theta_inf from s_in
+    # This is the actual geometrical periapsis direction of the hyperbolic orbit
+    p_hat = rodrigues_rotate(s_in, n_hat, -theta)  # periapsis direction
     q_hat = np.cross(n_hat, p_hat)
 
-    r_hat_exit  =  np.cos(theta_exit)*p_hat + np.sin(theta_exit)*q_hat
-    r_hat_enter =  np.cos(theta_exit)*p_hat - np.sin(theta_exit)*q_hat
+    theta_entry = np.arccos((l/rClose - 1)/e)  # Solve for theta at r=rClose
+    # entry_at_rclose = rClose * np.cos(-theta_entry) * p_hat + rClose * np.sin(-theta_entry) * q_hat
+    exit_at_rclose = rClose * np.cos(theta_entry) * p_hat + rClose * np.sin(theta_entry) * q_hat
 
-    r_exit  = rClose * r_hat_exit
-    r_enter = rClose * r_hat_enter
-    
-    return r_exit
+    # periapsis_pos = rp * p_hat
+    # C_pos = (rp + np.abs(a_hyp)) * p_hat
 
+    return exit_at_rclose
+
+def cartesian_to_spherical(x):
+    """
+    Convert Cartesian coordinates to spherical (r, theta, phi).
+    - r: radial distance
+    - theta: polar angle (0 at north pole)
+    - phi: azimuthal angle in xy-plane from x-axis
+    """
+    x = np.asarray(x, float)
+    r = np.linalg.norm(x)
+    if r == 0:
+        return 0.0, 0.0, 0.0
+    theta = np.arccos(x[2] / r)  # polar angle
+    phi = np.arctan2(x[1], x[0])  # azimuthal angle
+    return r, theta, phi

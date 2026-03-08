@@ -6,6 +6,7 @@ system_param_dict:
   mC: 0       # Mass of the light PBH in kg
   aB: 777908927640.0
   rB: 71492000.0
+  rA: 696265000.0
   vB: 13060.0
   eB: 0.0489
   iB: 0.02275909344600606
@@ -17,6 +18,7 @@ system_param_dict_lightPBH:
   mC: 1.988409870698051e+17       # Mass of the light PBH in kg
   aB: 777908927640.0
   rB: 71492000.0
+  rA: 696265000.0
   vB: 13060.0
   eB: 0.0489
   iB: 0.02275909344600606
@@ -28,6 +30,7 @@ system_param_dict_massivePBH:
   mC: 1.988409870698051e+27       # Mass of the light PBH in kg
   aB: 777908927640.0
   rB: 71492000.0
+  rA: 696265000.0
   vB: 13060.0
   eB: 0.0489
   iB: 0.02275909344600606
