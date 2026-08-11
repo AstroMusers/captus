@@ -39,11 +39,12 @@ class MonteCarloSimulation:
         self.v_escB = calcs.v_esc(self.muB, self.rB)
 
         self.epsilon = self.sys_par['epsilon']
+        self.epsilon_adjust_coeff = self.sys_par['epsilon_adjust_coeff']
         self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB, approx=False)
         self.rHill = calcs.hill_radius(self.aB, self.mA, self.mB, self.eB)
 
         while self.rClose > self.rHill:
-            self.epsilon *= 0.5
+            self.epsilon *= self.epsilon_adjust_coeff
             self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB, approx=False)
             print(f"Adjusted rClose to {self.rClose} to be within Hill radius {self.rHill}, epsilon={self.epsilon}")
 
@@ -150,7 +151,7 @@ class MonteCarloSimulation:
                 if b_max <= b_min:
                     # print("Skipped due to b_max <= b_min:", b_max, "<=", b_min)
                     failed += 1
-                    if failed > 1_000_000:
+                    if failed > 100_000:
                         print("Too many consecutive failures in finding valid b range. Exiting early.")
                         quota_condition = True
                         break
@@ -206,7 +207,7 @@ class MonteCarloSimulation:
                     check4 += 1
 
                     if a_val > 0 and 0 <= e_val < (1 if self.e_lim is None else self.e_lim):
-                        capture_crossec = calcs.capture_cross_section(b_min, b_max)
+                        capture_crossec = calcs.capture_cross_section(b_min, b_max, b, 1)[0]
                         collision_crossec = calcs.collision_cross_section(self.rB, self.v_escB, v1primeMag)
                         cap_a.append(a_val)
                         cap_e.append(e_val)
@@ -222,7 +223,7 @@ class MonteCarloSimulation:
                         cap_B_v.append(vBVec)
                         cap_system_energy.append(E2_system)
                         cap_capture_energy.append(E2_capture)
-                        cap_capture_cross_sections.append(capture_crossec)
+                        cap_capture_cross_sections.append(capture_crossec.value)
                         cap_collision_cross_sections.append(collision_crossec)
                         cap_v1.append(v1Vec)
                         cap_v1prime.append(v1primeVec)
@@ -250,8 +251,8 @@ class MonteCarloSimulation:
 
         
         # estimate capture cross-section
-        sigma_MC = (n_captured / sampled) * float(np.pi) * self.rClose**2
-        sigma_MC_dsigma = calcs.capture_cross_section_MC(cap_b, sampled)
+        sigma_MC = (n_captured / sampled) * float(np.pi) * self.rClose**2 if n_captured > 0 else 0
+        sigma_MC_dsigma = calcs.capture_cross_section_MC(cap_b, sampled).value if n_captured> 0 else 0
         print(f"for v_inf={v_inf/1e3} km/s and mC {self.mC/const.M_sun.value} M_sun MC capture cross-section:", sigma_MC, "m^2")
         print(f"for v_inf={v_inf/1e3} km/s and mC {self.mC/const.M_sun.value} M_sun MC capture cross-section (dσ avg):", sigma_MC_dsigma, "au^2")
 
@@ -270,7 +271,6 @@ class MonteCarloSimulation:
             'n_captured': n_captured,
             'sigma_MC_m2': sigma_MC,
             'sigma_MC_dsigma_au2': sigma_MC_dsigma,
-            'sigma_MC_areaB': (sigma_MC / self.areaB),
             'cap_a_au': cap_a_au,
             'cap_e': cap_e,
             'cap_lambda': np.array(cap_lambda),

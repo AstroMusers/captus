@@ -44,9 +44,42 @@ class OrbitalSimulation:
         self.max_execution_time = self.sim_par['max_execution_time'] # in seconds
         self.rClose = calcs.r_close(self.epsilon, self.mA, self.mB, self.aB)
 
+    def _save_set_parameters(self):
+        # Save parameters for reproducibility
+        save_dir = self.configuration.get_save_dir_rebound()
+        os.makedirs(save_dir, exist_ok=True)
+        param_file = os.path.join(save_dir, f'system_parameters_{self.seed_base}.npz')
+
+        if os.path.isfile(param_file):
+            # print(f"Parameter file {param_file} already exists. Skipping save to avoid overwriting.")
+            return
+        
+        params = {
+            'mA': self.mA,
+            'mB': self.mB,
+            'mC': self.mC,
+            'aB': self.aB,
+            'rA': self.rA,
+            'rB': self.rB,
+            'rC': self.rC,
+            'eB': self.eB,
+            'iB': self.iB,
+            'epsilon': self.epsilon,
+            'name': self.name,
+            'seed_base': self.seed_base,
+            'max_execution_time': self.max_execution_time,
+            'rClose': self.rClose
+        }
+
+        np.savez(param_file, **params)
+
 
     def _save_result(self, v, result):
         i = result[0]
+
+        if i == 0:
+            self._save_set_parameters()
+
         result_keys = ['i', 'v_inf', 'input_info', 'errors', 'a_init', 'e_init', 'E_init', 'start_distances', 'lifetime', 'integrations', 'final_energy_c', 'termination_flag', 'eccentricities', 'semi_major_axes', 'orbital_periods', 'times', 'collision_info', 'script_version']
         result_dict = {key: value for key, value in zip(result_keys, result)}
         v_str = f"{v:.0f}"
@@ -98,7 +131,7 @@ class OrbitalSimulation:
         #         return
         input_info = {'i': i, 'v_inf': v_inf, 'lambda1': lambda1, 'beta': beta, 'phi': phi, 'b': b, 'pos_C': pos_C, 'v_C': v_C, 'pos_B': pos_B, 'v_B': v_B}
         
-        print(f"Simulation {i} of starting at {datetime.datetime.now()}")
+        # print(f"Simulation {i} of starting at {datetime.datetime.now()}")
 
         mA = self.mA  # Msun
         mB = self.mB  # Jupiter mass in Msun
@@ -206,13 +239,13 @@ class OrbitalSimulation:
         counter = 0
         booster = 10
         plot_counter = 0
-        flag = ''
+        flags = set()
         E_initial = sim.energy()
         int_start = datetime.datetime.now()
         try:
-            if i<10:
-                ops = rebound.OrbitPlotSet(sim, slices=True, unitlabel="[AU]", color=["black", "red"])
-                self._save_figure(ops, i, v_inf_kms, 'initial', sim.t)
+            # if i<10:
+            #     ops = rebound.OrbitPlotSet(sim, slices=True, unitlabel="[AU]", color=["black", "red"])
+            #     self._save_figure(ops, i, v_inf_kms, 'initial', sim.t)
             j = 0
             while (sim.t < t_end):
                 P_C = sim.particles[2].orbit(primary=sim.particles[0]).P
@@ -236,14 +269,14 @@ class OrbitalSimulation:
                 E_b_cond = Evb - (G_unit*(sim.particles[0].m + sim.particles[1].m) / rAB)
 
                 if (E_c_cond > 0):
-                    flag += 'escape_C'
+                    flags.add('escape_C')
                     raise exc.EscapeError(f"Particle C is free: E_c:  {E_c_cond}, rAC: {np.abs(sim.particles[2] ** sim.particles[0])}")
                 if (E_b_cond > 0):
                     # error_list.append('escape_B')
-                    flag = 'escape_B_'
+                    flags.add('escape_B')
                     # raise exc.EscapeError(f"Particle B is free: E_b: {E_b_cond}, rAB: {np.abs(sim.particles[1] ** sim.particles[0])}")
 
-                if counter == snap_rate:
+                if counter >= snap_rate:
                     # Store positions and orbital elements
                     # positions_jup[j] = [sim.particles[1].x, sim.particles[1].y, sim.particles[1].z]
                     # positions_pbh[j] = [sim.particles[2].x, sim.particles[2].y, sim.particles[2].z]
@@ -263,18 +296,25 @@ class OrbitalSimulation:
                     E_current = sim.energy()
                     error = abs(E_current - E_initial)/E_initial
                     if error > 1e-5:
-                        flag += 'energy_conservation'
+                        flags.add('energy_conservation')
                         raise exc.EnergyError(f"Error in energy conservation: {error}")
                     
                     int_current = datetime.datetime.now()
                     elapsed_int = (int_current - int_start).total_seconds()
                     if elapsed_int > t_max_execution:
-                        flag += 'time_exceeded'
-                        raise exc.MaxIntegrationTimeError(f"Maximum time for integration exceeded: {elapsed_int} > {t_max_execution} seconds")
+                        flags.add('time_exceeded')
+                        raise exc.MaxIntegrationTimeError(f"Maximum time for integration exceeded: {elapsed_int}, evolution stopped at time {sim.t} years, rAC: {np.abs(sim.particles[2] ** sim.particles[0])}, rAB: {np.abs(sim.particles[1] ** sim.particles[0])}, E_c_cond: {E_c_cond}, E_b_cond: {E_b_cond}")
 
+                    dist_BC = np.abs(sim.particles[1] ** sim.particles[2])
+                    dist_AB = np.abs(sim.particles[0] ** sim.particles[1])
+                    dist_AC = np.abs(sim.particles[0] ** sim.particles[2])
 
+                    if dist_BC < (rB + rC) or dist_AB < (rA + rB) or dist_AC < (rA + rC):
+                        # Handle collision
+                        flags.add('collision_manual')
+                        raise exc.CollisionManualError(f"Collision detected: BC {dist_BC}, AB {dist_AB}, AC {dist_AC} at time {sim.t}")
                 
-                plot_counter += 1
+                # plot_counter += 1
                 # if yr == int(t_min):
                 #     print(f"Simulation {i} at time {sim.t}, step {j}")
                 #     print(f'Eccentricity of C : {sim.particles[2].e}')
@@ -282,7 +322,7 @@ class OrbitalSimulation:
                 #     yr = 0
         except rebound.Collision as e:
             # Extract collision information from Rebound
-            flag = 'collision'
+            flags.add('collision')
             collision_info = {
                 'time': sim.t,
                 'colliding_particles': str(e)
@@ -312,7 +352,7 @@ class OrbitalSimulation:
             
             print(f"Collision during integration: {e}, Simulation for system {i} at step {j}.")
 
-        except (exc.EnergyError, exc.EscapeError, exc.MaxIntegrationTimeError) as e:
+        except (exc.EnergyError, exc.EscapeError, exc.MaxIntegrationTimeError, exc.CollisionManualError) as e:
             print(f"Error during integration: {e}, Simulation failed for system {i}, at step {j}. Script continues...")
 
         except rebound.OrbitPlotSetError as e:
@@ -323,15 +363,17 @@ class OrbitalSimulation:
 
         # print(f'r_close = {rclose} and initial BC separation =  {initial_BC_distance}')
         if sim.t >= t_end:
-            flag += 'completed'
+            flags.add('completed')
             print(f"Simulation {i}  completed at {datetime.datetime.now()}")
-        try:
-            if i<10:
-                ops = rebound.OrbitPlotSet(sim, slices=True, unitlabel="[AU]", color=["black", "red"])
-                self._save_figure(ops, i, v_inf_kms, f'final_{flag}_{j}', sim.t)
-        except rebound.OrbitPlotSetError as e:
-            print(f"Final plotting error: {e}, Simulation for system {i}. Continuing without plotting...")
-            pass
+
+        flag = '_'.join(sorted(flags)) if flags else 'none'
+        # try:
+        #     if i<10:
+        #         ops = rebound.OrbitPlotSet(sim, slices=True, unitlabel="[AU]", color=["black", "red"])
+        #         self._save_figure(ops, i, v_inf_kms, f'final_{flag}_{j}', sim.t)
+        # except rebound.OrbitPlotSetError as e:
+        #     print(f"Final plotting error: {e}, Simulation for system {i}. Continuing without plotting...")
+        #     pass
 
 
         result = [i, v_inf, input_info, error_list, a_init, e_init, E_init, start_separation, sim.t, j, E_c_cond, flag,

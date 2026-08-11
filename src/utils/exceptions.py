@@ -7,3 +7,4 @@ class InvalidPeriodError(Exception): pass
 class InvalidTimeStepError(Exception): pass
 class PlottingError(Exception): pass
 class MaxIntegrationTimeError(Exception): pass
+class CollisionManualError(Exception): pass

@@ -35,6 +35,7 @@ system_param_dict_massivePBH:
   eB: 0.0489
   iB: 0.02275909344600606
   epsilon: 0.1
+  epsilon_adjust_coeff: 0.1
 v_inf_grid_params: 
   min_v: 1000  # Minimum incoming velocity in m/s
   max_v: 40498.00358610428  # Maximum incoming velocity in m/s
