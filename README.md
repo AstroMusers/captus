@@ -1,7 +1,7 @@
 # captus
-`captus` is a pipeline to estimate the galactic abundance of primordial black holes captured by main sequence stars as well as those bound states of black holes and stars that may form via other astrophysical pathways.
+`captus` is a pipeline to estimate the galactic abundance of primordial black holes captured by main-sequence stars and neutron stars.
 
-`captus` uses the N-body integrator [Rebound](https://github.com/hannorein/rebound) and binary evolution code [COMPAS](https://compas.science/).
+`captus` uses the N-body integrator [Rebound](https://github.com/hannorein/rebound).
 
 
 # Acknowledgements
