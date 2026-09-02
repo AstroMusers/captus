@@ -183,3 +183,8 @@ cython_debug/
 
 # Output files
 *.npz
+*.pkl
+
+# Legacy directories
+/local_archive
+/capture
