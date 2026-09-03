@@ -17,14 +17,19 @@ def get_script_version():
 
 class OrbitalSimulation:
 
-    def __init__(self, configuration, rng):
+    def __init__(self, configuration, rng, verbose=False):
         self.sys_par = configuration.get_system_param(all=True)
         self.sim_par = configuration.get_simulation_param(all=True)
         self.rng = rng
         self.configuration = configuration
+        self.verbose = verbose
         # Expect SI; convert to ('AU','yr','Msun') as needed
         self._set_system()
         # self._print_script_version()
+
+    def _vprint(self, message):
+        if self.verbose:
+            print(message)
 
     def _set_system(self):
 
@@ -345,18 +350,18 @@ class OrbitalSimulation:
                 
                 collision_info['collision_pairs'] = collision_pairs
                 collision_info['distances'] = {'AB': dist_AB, 'AC': dist_AC, 'BC': dist_BC}
-                
-                print(f"Collision detected in system {i} at time {sim.t}: {collision_pairs}")
+
+                self._vprint(f"Collision detected in system {i} at time {sim.t}: {collision_pairs}")
             except:
-                print(f"Collision detected in system {i} at time {sim.t}, but couldn't identify particles")
-            
-            print(f"Collision during integration: {e}, Simulation for system {i} at step {j}.")
+                self._vprint(f"Collision detected in system {i} at time {sim.t}, but couldn't identify particles")
+
+            self._vprint(f"Collision during integration: {e}, Simulation for system {i} at step {j}.")
 
         except (exc.EnergyError, exc.EscapeError, exc.MaxIntegrationTimeError, exc.CollisionManualError) as e:
-            print(f"Error during integration: {e}, Simulation failed for system {i}, at step {j}. Script continues...")
+            self._vprint(f"Error during integration: {e}, Simulation failed for system {i}, at step {j}. Script continues...")
 
         except rebound.OrbitPlotSetError as e:
-            print(f"Plotting error during integration: {e}, Simulation for system {i} at step {j}. Continuing without plotting...")
+            self._vprint(f"Plotting error during integration: {e}, Simulation for system {i} at step {j}. Continuing without plotting...")
         # E_final = sim.energy()
         # energy_change = abs(E_final - E_initial)/E_initial
         # print(f'final energy {E_final}, final time {sim.t}, final distance {sim.particles[1]  ** sim.particles[2]}, energy change {energy_change}')
@@ -364,7 +369,7 @@ class OrbitalSimulation:
         # print(f'r_close = {rclose} and initial BC separation =  {initial_BC_distance}')
         if sim.t >= t_end:
             flags.add('completed')
-            print(f"Simulation {i}  completed at {datetime.datetime.now()}")
+            self._vprint(f"Simulation {i}  completed at {datetime.datetime.now()}")
 
         flag = '_'.join(sorted(flags)) if flags else 'none'
         # try:

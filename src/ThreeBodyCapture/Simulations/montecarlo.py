@@ -9,12 +9,17 @@ from numpy.random import default_rng, SeedSequence, PCG64, Generator
 
 class MonteCarloSimulation:
 
-    def __init__(self, configuration, rng):
+    def __init__(self, configuration, rng, verbose=False):
         # Initialization code here
         self.sys_par = configuration.get_system_param(all=True)
         self.configuration = configuration
         self.rng = rng
+        self.verbose = verbose
         self._set_system()
+
+    def _vprint(self, message):
+        if self.verbose:
+            print(message)
 
     def _set_system(self):
 
@@ -46,7 +51,7 @@ class MonteCarloSimulation:
         while self.rClose > self.rHill:
             self.epsilon *= self.epsilon_adjust_coeff
             self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB, approx=False)
-            print(f"Adjusted rClose to {self.rClose} to be within Hill radius {self.rHill}, epsilon={self.epsilon}")
+            self._vprint(f"Adjusted rClose to {self.rClose} to be within Hill radius {self.rHill}, epsilon={self.epsilon}")
 
         self.aC = self.aB - self.rClose
         self.rC = calcs.schwarzchild_radius(self.mC)
@@ -73,7 +78,7 @@ class MonteCarloSimulation:
 
     def set_importance_sampling(self, sampling, sample_size=None, e_lim=None, max_execution_time=None, max_trials=1_000_000_000):
         if getattr(self, 'importance_sampling'):
-            print("Importance sampling parameters already set. Overriding with new values.")
+            self._vprint("Importance sampling parameters already set. Overriding with new values.")
         self.importance_sampling = sampling
         self.sample_size = sample_size
         self.max_trials = max_trials
@@ -152,7 +157,7 @@ class MonteCarloSimulation:
                     # print("Skipped due to b_max <= b_min:", b_max, "<=", b_min)
                     failed += 1
                     if failed > 100_000:
-                        print("Too many consecutive failures in finding valid b range. Exiting early.")
+                        self._vprint("Too many consecutive failures in finding valid b range. Exiting early.")
                         quota_condition = True
                         break
                     continue
@@ -253,8 +258,8 @@ class MonteCarloSimulation:
         # estimate capture cross-section
         sigma_MC = (n_captured / sampled) * float(np.pi) * self.rClose**2 if n_captured > 0 else 0
         sigma_MC_dsigma = calcs.capture_cross_section_MC(cap_b, sampled).value if n_captured> 0 else 0
-        print(f"for v_inf={v_inf/1e3} km/s and mC {self.mC/const.M_sun.value} M_sun MC capture cross-section:", sigma_MC, "m^2")
-        print(f"for v_inf={v_inf/1e3} km/s and mC {self.mC/const.M_sun.value} M_sun MC capture cross-section (dσ avg):", sigma_MC_dsigma, "au^2")
+        self._vprint(f"for v_inf={v_inf/1e3} km/s and mC {self.mC/const.M_sun.value} M_sun MC capture cross-section: {sigma_MC} m^2")
+        self._vprint(f"for v_inf={v_inf/1e3} km/s and mC {self.mC/const.M_sun.value} M_sun MC capture cross-section (dσ avg): {sigma_MC_dsigma} au^2")
 
         # orbital element stats
         cap_a = np.array(cap_a)
@@ -264,7 +269,7 @@ class MonteCarloSimulation:
         nocap_a = np.array(nocap_a)
         nocap_e = np.array(nocap_e)
         nocap_a_au = (nocap_a * u.m).to(u.au).value if nocap_a.size else np.array([])
-        print(f"Number of captured orbits: {n_captured}, e condition met: {check3}, out of {sampled} samples.")
+        self._vprint(f"Number of captured orbits: {n_captured}, e condition met: {check3}, out of {sampled} samples.")
 
         mc_results = {
             'v_inf': v_inf,
@@ -319,7 +324,7 @@ class MonteCarloSimulation:
         }
         self.mc_results = mc_results
         self._save_mc_results(mc_results, N)
-        print(f'Results saved for v_inf={v_inf/1e3} km/s with N={sampled} trials.')
+        self._vprint(f'Results saved for v_inf={v_inf/1e3} km/s with N={sampled} trials.')
         return 
         
     def get_mc_results(self):
