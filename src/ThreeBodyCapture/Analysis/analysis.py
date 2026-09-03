@@ -68,17 +68,24 @@ class Analysis:
             self.sampled_mc_results = self._get_sampled_mc_results()
         except Exception as e:
             print(f"Error loading sampled MC results: {e}")
-        try:
-            self.rebound_results = self._load_rebound_results()
-        except Exception as e:           
-            print(f"Error loading Rebound results: {e}")
-        try:
-            self.results_dictionary = self.get_combined_dictionary()
-        except Exception as e:
-            print(f"Error loading results: {e}")
+
+        if self.load_rebound is True:
+            try:
+                self.rebound_results = self._load_rebound_results()
+            except Exception as e:           
+                print(f"Error loading Rebound results: {e}")
+            try:
+                self.results_dictionary = self.get_combined_dictionary()
+            except Exception as e:
+                print(f"Error loading results: {e}")
+        else:
+            self.rebound_results = {}
+            self.results_dictionary = {}
+            print("Rebound results loading is disabled. Only MC results will be processed. Results dictionary not generated.")
 
     def get_system_parameters(self):
         return self.system_param_dict
+    
     def _load_mc_results(self):
 
         mc_results = {}

@@ -103,3 +103,46 @@ class PBHPopulation:
             print(f"Prepared configuration for mPBH = {mPBH / const.M_sun.value} solar masses.\n")
 
         return pop_dict
+
+    def get_population_dict(self):
+        """Return the population dictionary."""
+        return self.population_dict
+
+    def sample_mc(self):
+        """
+        Sample the Monte Carlo results for each configuration in the population.
+
+        Parameters:
+        - None
+        Returns:
+        - None (updates the population_dict with sampled results)
+        """
+
+        for p in list(self.population_dict.values()):
+            configuration = p['configuration']
+            name = p['name']
+            print(f"Analyzing Monte Carlo results for configuration: {name}")
+            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=False)
+            mc = analysis.get_mc_results()
+            sampled_mc = analysis.get_sampled_mc_results()
+            self.population_dict[name]['sampled_mc'] = sampled_mc
+
+    def analyze_population(self, r=8, time_averages=False, update=False, use_cached_data=True):
+        """
+        Analyze the entire population of PBHs after all simulations are complete.
+
+        Parameters:
+        - None
+        Returns:
+        - None (updates the population_dict with analysis results)
+        """
+        for p in list(self.population_dict.values()):
+            configuration = p['configuration']
+            name = p['name']
+            print(f"Analyzing final results for configuration: {name}")
+            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=True)
+            analysis_results = analysis.get_combined_dictionary(r, time_averages, update, use_cached_data)
+            self.population_dict[name]['analysis'] = analysis
+            self.population_dict[name]['analysis_results'] = analysis_results
+
+

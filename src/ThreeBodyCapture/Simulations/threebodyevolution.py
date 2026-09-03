@@ -1,6 +1,7 @@
 import datetime
 import multiprocessing
 import os
+import time
 
 import numpy as np
 from numpy.random import Generator, PCG64, SeedSequence
@@ -21,14 +22,14 @@ def rebound_worker(pars):
     """Top-level worker for multiprocessing."""
     configuration, child_ss, i, v_inf, lambda1, beta, phi, b, pos_C, v_C, pos_B, v_B = pars
     rng = Generator(PCG64(child_ss))
-    simulation = OrbitalSimulation(configuration=configuration, rng=rng)
+    simulation = OrbitalSimulation(configuration=configuration, rng=rng, verbose=False)
     return simulation.run_orbital_integration(i, v_inf, lambda1, beta, phi, b, pos_C, v_C, pos_B, v_B)
 
 
 class ThreeBodyEvolution:
-    def __init__(self, population_dict):
+    def __init__(self, population_dict, verbose=False):
         self.population_dict = population_dict
-        self.results = None
+        self.verbose = verbose
 
     def _iter_runs(self):
         if isinstance(self.population_dict, dict):
@@ -91,6 +92,7 @@ class ThreeBodyEvolution:
     def run_simulation(self, num_cores=50):
         """Run all prepared evolution simulations in a multiprocessing pool."""
         overall_start = datetime.datetime.now()
+        overall_start_ts = time.time()
         all_pars, run_info = self._build_tasks()
 
         total_to_run = len(all_pars)
@@ -104,15 +106,48 @@ class ThreeBodyEvolution:
             self.results = []
             return self.results
 
-        with multiprocessing.Pool(processes=min(num_cores, total_to_run)) as pool:
-            results = pool.map(rebound_worker, all_pars)
+        # Helper to format seconds to H:MM:SS
+        def _fmt(sec):
+            sec = int(sec)
+            m, s = divmod(sec, 60)
+            h, m = divmod(m, 60)
+            return f"{h:d}:{m:02d}:{s:02d}"
+
+        results = []
+        completed = 0
+        processes = min(num_cores, total_to_run)
+        chunksize = 1
+
+        with multiprocessing.Pool(processes=processes) as pool:
+            try:
+                for res in pool.imap_unordered(rebound_worker, all_pars, chunksize=chunksize):
+                    results.append(res)
+                    completed += 1
+
+                    elapsed_sec = time.time() - overall_start_ts
+                    avg_sec = elapsed_sec / completed
+                    remaining_sec = avg_sec * (total_to_run - completed)
+                    pct = (completed / total_to_run) * 100
+
+                    print(
+                        f"\rProgress: {completed}/{total_to_run} ({pct:.1f}%), "
+                        f"elapsed {_fmt(elapsed_sec)}, estimated remaining time {_fmt(remaining_sec)}",
+                        end='', flush=True,
+                    )
+
+            except KeyboardInterrupt:
+                pool.terminate()
+                print("\nInterrupted by user — terminating workers.")
+                raise
+
+        # Ensure final newline after progress bar
+        print()
 
         elapsed = datetime.datetime.now() - overall_start
         print(f"\n{'='*70}")
         print(f"✓ ALL RUNS COMPLETE!")
         print(f"Total time: {elapsed} ({elapsed.total_seconds()/60:.2f} min)")
-        print(f"Average: {elapsed.total_seconds()/total_to_run:.2f} sec/simulation")
+        if total_to_run > 0:
+            print(f"Average: {elapsed.total_seconds()/total_to_run:.2f} sec/simulation")
         print(f"{'='*70}")
 
-        self.results = results
-        return results
