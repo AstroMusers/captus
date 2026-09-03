@@ -1,6 +1,6 @@
 import yaml
 import numpy as np
-import src.Utils.calculations_v0 as calc
+import src.Utils.calculations as calc
 import astropy.constants as const
 from astropy import units as u
 import src.Utils.misc as misc

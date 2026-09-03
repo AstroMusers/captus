@@ -11,6 +11,7 @@ system_param_dict:
   eB: 0.0489
   iB: 0.02275909344600606
   epsilon: 0.1
+  epsilon_adjust_coeff: 0.1
 system_param_dict_lightPBH:
   # name: "Sun_Jupiter_lightPBH"
   mA: 1.988409870698051e+30  # Mass of the Sun in kg
@@ -23,6 +24,7 @@ system_param_dict_lightPBH:
   eB: 0.0489
   iB: 0.02275909344600606
   epsilon: 0.1
+  epsilon_adjust_coeff: 0.1
 system_param_dict_massivePBH:
   # name: "Sun_Jupiter_massivePBH"
   mA: 1.988409870698051e+30  # Mass of the Sun in kg
@@ -42,7 +44,7 @@ v_inf_grid_params:
   n_v: 10  # Number of samples for incoming velocity
 simulation_param_dict:
   trials: 10000000        # int
-  max_trials: 100000000   # int
+  max_trials: 10000000000   # int
   max_execution_time: 3600  # int, in seconds
   sample_size: 100        # int
   max_e: 1.00          # float
