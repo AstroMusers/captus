@@ -2749,7 +2749,7 @@ class Plots:
                 cmap = cmaps[i] if i < len(cmaps) else 'viridis'
                 cc = plt.get_cmap(cmap)(0.9)
                 v_keys = [vv for vv in analysis_dict.keys() if 'V' in vv]
-                zkey = self._get_metric_from_sources(analysis_dict, v_keys[0], analysis_zkey)
+                zkey = self._get_metric_from_sources(analysis_dict, None, analysis_zkey)
                 for col_idx, v in enumerate(v_keys):
                     
                     if col_idx >= ncols:

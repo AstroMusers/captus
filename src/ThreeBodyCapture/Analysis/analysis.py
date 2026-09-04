@@ -197,12 +197,12 @@ class Analysis:
     
     def get_combined_dictionary(self, r=8, time_averages=False, update=False, use_cached_data=True):
 
-        if hasattr(self, 'results_dictionary'):
+        if hasattr(self, 'results_dictionary') and use_cached_data:
             if not update and not time_averages:
                 print("Using cached results dictionary.")
                 return self.results_dictionary
             
-            if use_cached_data and update:
+            if update:
                 print("Using cached data in results dictionary as base for update, (MC and Rebound data not relaoded).")
                 catalog = self.results_dictionary  # start with existing catalog and update derived metrics
                 for v_key in catalog['v_keys']:
@@ -1537,7 +1537,7 @@ class Analysis:
         self.mc_sample_size = 10**18
 
         self.sampled_mc_results = self._get_sampled_mc_results()
-        self.results_dictionary = self.get_combined_dictionary(update=True, use_cached_data=False)
+        self.results_dictionary = self.get_combined_dictionary(use_cached_data=False)
 
         return self
     def _get_metric_from_sources(self, analysis_dict, v_key, metric_name):
