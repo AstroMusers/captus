@@ -117,7 +117,7 @@ def sci_notation_latex(x, pos=None):
     else:
         exponent = int(np.floor(np.log10(abs(x))))
         coeff = x / 10**exponent
-        print(f"Formatting {x:.2e} as {coeff:.2f} × 10^{exponent}")
+        # print(f"Formatting {x:.2e} as {coeff:.2f} × 10^{exponent}")
         # Use LaTeX formatting for matplotlib
         if ((coeff - 1.00) < 1e-3):
             return r"10$^{{{}}}$".format(exponent)
