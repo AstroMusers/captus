@@ -40,6 +40,8 @@ class Configuration:
 
             if 'OmegaCenturi' in self.name:
                 cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/OmegaCenturi.yaml')))
+            if 'BetaPictoris' in self.name:
+                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/BetaPictoris.yaml')))
 
         if sys_params is None:
             sys_params = cfg['system_param_dict']
