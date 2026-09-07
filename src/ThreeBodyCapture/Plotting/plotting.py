@@ -5794,6 +5794,7 @@ class Plots:
                             for m in metric:
                                 if isinstance(m, (list, tuple, np.ndarray)):
                                     m = np.mean(m)
+                                    print(f"Time-dependent metric, averaged to {m}")
                                 m = m * unit_change[1]
                                 if np.isfinite(m) and m > 0:
                                     all_metrics_bottom[analysis_idx].append(m)
@@ -6071,6 +6072,376 @@ class Plots:
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
             fig.savefig(out, dpi=300)
+
+    def plot_kde(self, metric_lists, metric_labels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], global_ylim=False, metric_range=None, metric_masks=None,  normalization=1, thresh=0.1, levels=10, bw_adjust=0.6, zorder=[1,1,1], alpha=[1,1,1], linewidth=[1,1,1], linestyle=['-', '--', ':'], cmaps=None, fig_size=(3.5, 3), fill=[True,True,True], unit_change=(1, 1), reverse_axes=None, scale=('linear', 'linear'), ticks=None, ranges=None,  cut=3.0, extra_scatters=None,extra_fills=None, bh3_mass_adjustment=None, save=False, save_as=None):
+        """
+        Plot KDEs for multiple analyses with twin axes, showing distributions for each analysis with different lines.
+        - Top X-axis: metric_lists[0] (e.g., semi-major axis)
+        - Bottom X-axis: metric_lists[1] (e.g., eccentricity)
+        - Each KDE shows the distribution of metrics aggregated across all v_inf for that mC value
+        - Different analyses (mC values) are represented with different colored lines
+        Parameters:
+        -----------
+        metric_lists : list of lists
+            [[bottom_metrics], [top_metrics]] - metrics for bottom and top x-axes
+        metric_labels : list of str
+            [bottom_xlabel, top_xlabel]
+        analysis_key : str or list
+            'All' or list of analysis names to include
+        analysis_zkey : str
+            Key to use for z-axis values (e.g., mC) to differentiate analyses
+        analysis_zlabel : list  
+            [z_xlabel, z_ylabel]
+        v_key : str
+            Key to use for v_inf values in the analysis dictionaries
+        bins : list of int
+            [bottom_bins, top_bins] - number of bins for each axis
+        bin_scale : list of str
+            [bottom_scale, top_scale] - 'log' or 'linear' scaling for bins
+        metric_scale : list of str
+            [bottom_scale, top_scale] - 'log' or 'linear' scaling for metric axes
+        global_ylim : bool          
+        metric_range : list of tuples
+            [(bottom_min, bottom_max), (top_min, top_max)] - range for each metric axis
+        metric_masks : list of lists
+            [[bottom_masks], [top_masks]] - masks to apply to metrics
+        normalization : float
+            Factor to normalize counts by
+        thresh : float
+            Threshold for KDE evaluation
+        levels : int
+            Number of contour levels for KDE
+        bw_adjust : float   
+            Bandwidth adjustment for KDE
+        zorder : list
+            List of z-orders for plotting each analysis 
+        alpha : list
+            List of alpha values for plotting each analysis
+        linewidth : list    
+        linestyle : list
+        cmaps : list
+            List of colormaps for each analysis
+        fig_size : tuple        
+        save_as : str
+            Filename to save the figure as (without path)
+        save : bool
+            Whether to save the figure  
+        """
+        
+        if analysis_key == 'All':
+            analysis_list = list(self.analysis_dicts.values())
+            analysis_names = list(self.analysis_dicts.keys())
+        elif isinstance(analysis_key, list):
+            analysis_list = [self.analysis_dicts[name] for name in analysis_key if name in self.analysis_dicts]
+            analysis_names = [name for name in analysis_key if name in self.analysis_dicts]
+        
+        # Get mC values for each analysis
+        zkey_values = []
+        for a in analysis_list:
+            vkey = list(a.keys())[0]
+            zkey = self._get_metric_from_sources(a, None, analysis_zkey)
+            zkey_values.append(zkey)
+        
+        # Sort by mC for consistent coloring
+        sorted_indices = np.argsort(zkey_values)
+        sorted_mC_values = [zkey_values[i] for i in sorted_indices]
+        sorted_analyses = [analysis_list[i] for i in sorted_indices]
+
+        pre_mask = np.zeros(len(metric_masks[0]))
+        post_mask = np.zeros(len(pre_mask))
+        metric_x, metric_y = [[] for _ in (analysis_list)], [[] for _ in (analysis_list)]
+        metrics = [metric_x, metric_y]
+        for analysis_idx, analysis_dict in enumerate(sorted_analyses):
+            # Collect metrics for this analysis across all v_inf
+            analysis_name = analysis_names[sorted_indices[analysis_idx]]
+            zkey = sorted_mC_values[analysis_idx] / const.M_sun.value
+            post_mask_per_a = [0, 0]
+            
+            print(f"\nProcessing analysis {analysis_name} with zkey {zkey:.3e} {analysis_zlabel[1]}")
+            for v_key in analysis_dict.keys():
+                if 'V' not in v_key:
+                    continue
+                
+                if metric_lists[0]:
+                    
+                    for metric_name in metric_lists[0]:
+                        metric = self._get_metric_from_sources(analysis_dict, v_key, metric_name)
+                        
+                        # Apply mask if provided
+                        if metric_masks is not None and len(metric_masks) > 0 and metric_masks[0]:
+                            mask = np.ones_like(metric, dtype=bool)  # Start with all True
+                            for m in range(len(metric_masks[0])):
+                            # mask = self.resolve_mask(self.get_analysis(analysis_name), metric_masks[0][0], v_key)
+                                mask_m = self.quick_mask(analysis_dict, v_key, metric_masks[0][m])
+                                pre_mask[m] += np.sum(mask)
+                                mask = mask & mask_m  # Combine masks with AND
+                                post_mask[m] += np.sum(mask)
+                                post_mask_per_a[m] += np.sum(mask)
+                                print(f'{m+1} mask found, combined mask sum: {np.sum(mask)}')
+                            # print(f'applying mask(s) for analysis {analysis_name}, v_key {v_key}, metric {metric_name} sum: {np.sum(mask) if mask is not None else "No mask"}')
+                            if mask is not None:
+                                mask_final = np.asarray(mask)
+                                metric = [m for j, m in enumerate(metric) if mask_final[j]]
+                                print(f"Applied mask, {len(metric)} values after masking")
+                                # if zkey >= 1e-3:
+                                #     above_q_lim += len(metric)
+
+                    
+
+                        metrics[metric_lists[0].index(metric_name)][analysis_idx].extend(metric)
+
+            
+        fig, axs = plt.subplots(1, 1, figsize=fig_size)
+        if cmaps is None:
+            ccs = ['Purples', 'Oranges', 'Blues', 'Reds']
+        else:
+            ccs = cmaps
+
+
+        i=0
+
+        # metrics = [[m] for m in metrics]
+        for metric_x, metric_y, cc in zip(metrics[0], metrics[1], ccs):
+            def process_metric(m, unit_factor):
+                if isinstance(m, (list, tuple)):
+                    if len(m) > 2:
+                        m = m[1:-1]
+                    if len(m) == 0:
+                        return []
+                    return [float(mm * unit_factor) for mm in m if np.size(mm) > 0]
+                elif isinstance(m, np.ndarray) and m.ndim > 0:
+                    return (m.flatten() * unit_factor).tolist()
+                else:
+                    return [float(m * unit_factor)]
+            
+            data_x = process_metric(metric_x, unit_change[0])
+            data_y = process_metric(metric_y, unit_change[1])
+            print(f"Original data points in x: {len(data_x)}")
+            print(f"Original data points in y: {len(data_y)}")
+            x_array = np.array(data_x)
+            y_array = np.array(data_y)
+
+            # Filter invalid
+            valid_mask = np.isfinite(x_array) & np.isfinite(y_array)
+            x_array = x_array[valid_mask]
+            y_array = y_array[valid_mask]
+            
+            print(f"{len(x_array)} valid points in x")
+            print(f"{len(y_array)} valid points in y")
+            
+            if reverse_axes: 
+                # Reverse x-axis if it is plotted on top x axis
+                x_array = -x_array if reverse_axes[i][0] else x_array
+                y_array = -y_array if reverse_axes[i][1] else y_array
+                print(f"  Reversed axes: x reversed={reverse_axes[i][0]}, y reversed={reverse_axes[i][1]}")
+
+            # Check variances, if zero, add a small jitter to avoid KDE failure
+            if np.var(x_array) == 0:
+                print("  Warning: Zero variance in x data. Adding jitter to avoid KDE failure.")
+                x_array += np.random.normal(0,  np.ptp(x_array), size=x_array.shape)
+                x_array = np.array(x_array)
+            if np.var(y_array) == 0:
+                print("  Warning: Zero variance in y data. Adding jitter to avoid KDE failure.")
+                y_array = [y + np.random.normal(0,  1e-3) for y in y_array]
+                print(f"  Added jitter to y data: new variance = {np.var(y_array):.2e}")
+                y_array = np.array(y_array)
+
+            if ranges is not None:
+                x_mask = np.ones_like(x_array, dtype=bool)
+                y_mask = np.ones_like(y_array, dtype=bool)  
+                if ranges[0] is not None:
+                    x_rng = (ranges[0][0]*unit_change[0], ranges[0][1]*unit_change[0])
+                    axs.set_xlim(x_rng)
+                    x_mask = (x_array >= x_rng[0]) & (x_array <= x_rng[1])
+                if ranges[1] is not None:
+                    y_rng = (ranges[1][0]*unit_change[1], ranges[1][1]*unit_change[1])
+                    axs.set_ylim(y_rng)
+                    y_mask = (y_array >= y_rng[0]) & (y_array <= y_rng[1])
+
+                x_array = x_array[x_mask & y_mask]
+                y_array = y_array[y_mask & x_mask]
+
+            df = pd.DataFrame({metric_labels[0]: x_array, metric_labels[1]: y_array})
+            within_percentage = np.sum([x_mask & y_mask]) / len(x_mask) * 100 if ranges is not None and ranges[0] is not None else 100
+            # ============ GAUSSIAN KDE ============
+            # KDE parameters
+            kde_kw = dict(
+                fill=fill[i],
+                levels=levels,
+                thresh=thresh,
+                bw_adjust=bw_adjust,
+                common_norm=False,
+                cut=cut,
+                label=None,
+                alpha=alpha[i],
+                linewidths=linewidth[i],
+                linestyles=linestyle[i],
+                zorder=zorder[i],
+            )
+            cmap_obj = plt.colormaps[cc].resampled(256)
+            cmap_cols = cmap_obj(np.linspace(0.2, 1.0,256 ))  # Dark purple under color
+            my_cmap = LinearSegmentedColormap.from_list("mycmap", cmap_cols)
+            sns.kdeplot(x=metric_labels[0], y=metric_labels[1], data=df, ax=axs, cmap=my_cmap, **kde_kw)
+                
+            axs.set_ylabel(f'', fontsize=9)
+            axs.set_xlabel(f'', fontsize=9)
+            kde = gaussian_kde(np.vstack([x_array, y_array]), bw_method='scott')
+            kde.set_bandwidth(kde.factor * kde_kw['bw_adjust'])  # ← Match your bw_adjust=0.7
+            density = kde(np.vstack([x_array, y_array]))
+            threshold = kde_kw['thresh'] * density.max()
+            print(f"  {np.sum(density < threshold)} outliers detected")
+            mask_outliers = density < threshold
+
+            print(f"Average x value: {np.mean(x_array):.2f}, Average y value: {np.mean(y_array):.2f}")
+            axs.scatter(x_array[mask_outliers], y_array[mask_outliers], color=plt.get_cmap(cc)(0.9), s=2, edgecolor=plt.get_cmap(cc)(0.9), linewidth=0.5, zorder=10, alpha=0.8)
+            
+                    # Optional overlay points
+            if extra_scatters is not None and i < len(extra_scatters) and extra_scatters[i] is not None:
+                s = extra_scatters[i]
+                sx = np.asarray(s.get("x", []))
+                sy = np.asarray(s.get("y", []))
+                def _expand(v, n, default):
+                    if isinstance(v, (list, tuple, np.ndarray)):
+                        if len(v) != n:
+                            raise ValueError(f"Length mismatch: expected {n}, got {len(v)}")
+                        return list(v)
+                    return [default if v is None else v] * n
+
+                npts = len(sx)
+                markers = _expand(s.get("marker", "o"), npts, "o")
+                sizes = _expand(s.get("s", 30), npts, 30)
+                colors = _expand(s.get("c", "k"), npts, "k")
+                markerfacecolors = _expand(s.get("mfc", colors), npts, colors[0])
+                edgecolors = _expand(s.get("edgecolors", "white"), npts, "white")
+                linewidths = _expand(s.get("linewidths", 0.8), npts, 0.8)
+                alphas = _expand(s.get("alpha", 1.0), npts, 1.0)
+                text_colors = _expand(s.get("text_color", "black"), npts, "black")  # ← NEW
+
+                for j, (xj, yj) in enumerate(zip(sx, sy)):
+
+                    xerr_j = None
+                    yerr_j = None
+                    
+                    if s.get("x_err") is not None:
+                        x_err_tuple = s.get("x_err")
+                        xerr_j = ([x_err_tuple[0][j]], [x_err_tuple[1][j]])
+                    
+                    if s.get("y_err") is not None:
+                        y_err_tuple = s.get("y_err")
+                        yerr_j = ([y_err_tuple[0][j]], [y_err_tuple[1][j]])
+                    
+                    axs.errorbar(
+                        [xj], [yj],
+                        xerr=xerr_j,
+                        yerr=yerr_j,
+                        capsize=s.get("capsize", 3),
+                        capthick=linewidths[j],
+                        marker=markers[j],
+                        ms=sizes[j],
+                        c=colors[j],
+                        mec=edgecolors[j],
+                        mfc=markerfacecolors[j],
+                        linewidth=linewidths[j],
+                        mew=s.get("mew", linewidths[j]),
+                        alpha=alphas[j],
+                        zorder=s.get("zorder", 20),
+                        label=s.get("label", None) if j == 0 else None,
+                    )
+                
+                texts = s.get("text", None)
+                if texts is not None:
+                    if isinstance(texts, str):
+                        texts = [texts] * len(sx)
+                    xytexts = s.get("xytext", (5, 5))
+                    if isinstance(xytexts, tuple) and len(xytexts) == 2 and not isinstance(xytexts[0], (list, tuple, np.ndarray)):
+                        xytexts = [xytexts] * len(sx)
+                    elif isinstance(xytexts, (list, tuple)):
+                        if len(xytexts) != len(sx):
+                            raise ValueError("xytext list length must match number of points in x/y.")
+                    else:
+                        xytexts = [(5, 5)] * len(sx)
+
+                    for x0, y0, t, xyoff, txt_color in zip(sx, sy, texts, xytexts, text_colors):
+                        axs.annotate(
+                            t, (x0, y0),
+                            xytext=tuple(xyoff),
+                            textcoords="offset points",
+                            fontsize=s.get("fontsize", 8),
+                            color=txt_color,  # ← Use custom text color
+                            ha=s.get("ha", "left"),
+                            va=s.get("va", "bottom"),
+                            zorder=s.get("text_zorder", 21),
+                            fontweight='bold'
+                        )
+                        
+            # Optional overlay fill_between regions
+            if extra_fills is not None and i < len(extra_fills) and extra_fills[i] is not None:
+                # print(f"\n✓ DEBUG: Processing extra_fills for dataset {i}")
+                # print(f"  extra_fills[{i}] = {extra_fills[i]}")
+                f = extra_fills[i]
+                
+                for fill_idx, fill_region in enumerate(
+                    f if isinstance(f, list) else [f]):
+                    
+                    x_fill = np.asarray(fill_region.get("x", []))
+                    y1_fill = np.asarray(fill_region.get("y1", []))
+                    y2_fill_raw = fill_region.get("y2", None)
+                    y2_fill = np.asarray(y2_fill_raw) if y2_fill_raw is not None else None
+
+                    
+                    print(f"  Fill {fill_idx}: x_fill={x_fill}, y2_fill={y2_fill}")
+                    
+                    if len(x_fill) == 0:
+                        print(f"    → Skipped (empty data)")
+                        continue
+                    
+                    # If no y2, assume vertical fill at this x position
+                    if y2_fill is None:
+                        print(f"    → Drawing axvspan({x_fill[0]:.2f}, {x_fill[-1]:.2f})")
+                        print(f"    → color={fill_region.get('color')}, alpha={fill_region.get('alpha')}, zorder={fill_region.get('zorder')}")
+                        axs.axvspan(x_fill[0], x_fill[-1] if len(x_fill) > 1 else x_fill[0],
+                                color=fill_region.get("color", "gray"),
+                                alpha=fill_region.get("alpha", 0.3),
+                                zorder=fill_region.get("zorder", 0),
+                                label=fill_region.get("label", None) if fill_idx == 0 else None)
+                    else:
+                        # Between two curves
+                        print(f"    → Drawing fill_between")
+                        axs.fill_between(x_fill, y1_fill, y2_fill,
+                                        color=fill_region.get("color", "gray"),
+                                        alpha=fill_region.get("alpha", 0.3),
+                                        label=fill_region.get("label", None) if fill_idx == 0 else None,
+                                        hatch=fill_region.get("hatch", None),
+                                        edgecolor=fill_region.get("edgecolor", "none"),
+                                        linewidth=fill_region.get("linewidth", 1.0),
+                                        zorder=fill_region.get("zorder", 0))
+
+            i += 1
+        # ============ FORMATTING ============
+
+        if scale[1] == 'log':
+            axs.set_yscale('log')
+        if scale[0] == 'log':
+            axs.set_xscale('log')
+
+        if ticks:
+            axs.set_xticks(ticks[0] if ticks and ticks[0] else None)
+            axs.set_yticks(ticks[1] if ticks and ticks[1] else None)
+
+        axs.set_xlabel(f'{metric_labels[0]}')
+        axs.set_ylabel(f'{metric_labels[1]}')
+        fig.tight_layout()
+
+        if save:
+            if save_as is not None:
+                figname = save_as
+            else:
+                figname = f'{metric_labels[0].strip()}_vs_{metric_labels[1].strip()}_kde.png'
+            plt.savefig(figname, dpi=300)
+            print(f"Saved KDE plot as {figname}")
+        plt.show()
+        
+
 
     def resolve_mask(self, analysis, spec, v_key):
         if spec is None:
