@@ -1800,7 +1800,7 @@ def get_pbh_fraction_bounds(Mpbh, bound_id, return_all_bounds=False):
             bounds_values.append(f_at_mC)
             
         except Exception as e:
-            print(f"Warning: Could not load bound '{bid}': {e}")
+            # print(f"Warning: Could not load bound '{bid}': {e}")
             result[f'bound_{bid}'] = np.nan
             result[f'status_{bid}'] = "error"
     

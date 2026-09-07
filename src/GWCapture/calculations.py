@@ -53,7 +53,7 @@ def orbital_momentum(e, mu, b, v_inf):
     if r == np.inf:
         return 0, r
     L = mu * b * v_inf
-    print('L:', L, 'r:', r)
+    # print('L:', L, 'r:', r)
     return L, r
 
 def r_minimum(M_star, M_pbh, v_inf, e):
