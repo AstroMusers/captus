@@ -3,7 +3,7 @@ from scipy.optimize import brentq
 import captus.utils.misc as misc
 from astropy import constants as const
 import astropy.units as u
-from captus.gw_capture.calculations import *
+from captus.gw_capture.calculations import b_minimum, compute_b_max, compute_capture_crossec, compute_semimajor_axis, orbital_period, coalescence_time, galactic_dm_maxwell_dist, integrate_gauss_legendre, neq_r_f
 from captus.gw_capture.plotting import plot_capture_cross_section, plot_coalescence_time, plot_n_eqs, plot_all_grids
 
 G = const.G.value

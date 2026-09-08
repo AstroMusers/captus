@@ -1,7 +1,6 @@
 import os
 import glob
 import numpy as np
-from rebound import data
 import captus.utils.calculations as calc
 from astropy import units as u
 import astropy.constants as const
@@ -9,13 +8,14 @@ import captus.three_body_capture.configurations.configuration as config
 import captus.utils.misc as misc
 import pandas as pd
 import scipy.stats as stats
+from pathlib import Path
 from scipy.stats import norm
 import copy
 import pickle
 import json
 
-REPO_ROOT = misc._resolve_repo_root()
-print(f'Using REPO_ROOT: {REPO_ROOT}')
+# REPO_ROOT = misc._resolve_repo_root()
+# print(f'Using REPO_ROOT: {REPO_ROOT}')
 
 class Analysis:
     def __init__(self, name, configuration, load='All', load_rebound=True, rng=None, results_dir_mc=None, results_dir_rebound=None):
@@ -42,20 +42,22 @@ class Analysis:
 
         if results_dir_mc is not None:
             if isinstance(results_dir_mc, list):
-                self.mc_dir = [os.path.join(REPO_ROOT, dir) for dir in results_dir_mc]
+                self.mc_dir = [Path(dir) for dir in results_dir_mc]
             else:
-                self.mc_dir = os.path.join(REPO_ROOT, results_dir_mc)
+                self.mc_dir = Path.cwd() / results_dir_mc
         
         else:
-            self.mc_dir = os.path.join(REPO_ROOT, f'runs/{name}/Monte_Carlo_Results/')
+            self.mc_dir = Path.cwd() / f'runs/{name}/Monte_Carlo_Results/'
+            self.mc_dir.mkdir(parents=True, exist_ok=True)
 
         if results_dir_rebound is not None:
             if isinstance(results_dir_rebound, list):
-                self.rebound_dir = [os.path.join(REPO_ROOT, dir) for dir in results_dir_rebound]
+                self.rebound_dir = [Path(dir) for dir in results_dir_rebound]
             else:
-                self.rebound_dir = os.path.join(REPO_ROOT, results_dir_rebound)
+                self.rebound_dir = Path.cwd() / results_dir_rebound
         else:
-            self.rebound_dir = os.path.join(REPO_ROOT, f'runs/{name}/Rebound_Simulation_Results/')
+            self.rebound_dir = Path.cwd() / f'runs/{name}/Rebound_Simulation_Results/'
+            self.rebound_dir.mkdir(parents=True, exist_ok=True)
 
         print(f'Loading MC results from: {self.mc_dir}')
         print(f'Loading Rebound results from: {self.rebound_dir}')

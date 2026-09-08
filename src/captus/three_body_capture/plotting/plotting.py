@@ -13,21 +13,19 @@ import matplotlib.ticker as mt
 from astropy import units as u
 from astropy import constants as const
 from scipy.stats import gaussian_kde
-import corner as cr
 import pandas as pd
 import seaborn as sns
-import tdpy as td
+from pathlib import Path
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 class Plots:
     def __init__(self, name, analysis, analysis_dictionaries=None, **kwargs):
 
         self.name = name
 
-        plots_dir = os.path.join(REPO_ROOT, f'plots/{self.name}/Plots')
+        plots_dir = Path(__file__).parent.parent / f'plots/{self.name}/Plots'
 
-        if not os.path.exists(plots_dir):
-            os.makedirs(plots_dir)
+        if not plots_dir.exists():
+            plots_dir.mkdir(parents=True, exist_ok=True)
 
         self.plots_dir = plots_dir
 

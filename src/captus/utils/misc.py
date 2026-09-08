@@ -196,7 +196,7 @@ def create_analysis_pandas_table(analysis_list, rows, row_labels, decimal_places
             if average_columns and k in average_columns:
                 averaged_columns_labels.append(fr'{labl}')
                 if len(averaged_columns_labels) == len(average_columns):
-                    cols_labels_list.append(fr'Average of ' + ', '.join(averaged_columns_labels) + ' M$_{{\odot}}$')
+                    cols_labels_list.append(fr'Average of ' + ', '.join(averaged_columns_labels) + r' M$_{\odot}$')
                     averaged_columns_labels.clear()
                 else:
                     continue
