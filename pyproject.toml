@@ -17,7 +17,7 @@ keywords = ["astrophysics", "three body capture", "rebound"]
 
 # Core runtime dependencies (from requirements.txt, excluding pytest)
 dependencies = [
-    "numpy",
+    "numpy>=2.0",
     "matplotlib",
     "astropy",
     "pandas",
