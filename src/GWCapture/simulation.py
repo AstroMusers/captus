@@ -1,10 +1,10 @@
 import numpy as np
 from scipy.optimize import brentq
-import src.Utils.misc as misc
+import captus.utils.misc as misc
 from astropy import constants as const
 import astropy.units as u
-from src.GWCapture.calculations import *
-from src.GWCapture.plotting import plot_capture_cross_section, plot_coalescence_time, plot_n_eqs, plot_all_grids
+from captus.gw_capture.calculations import *
+from captus.gw_capture.plotting import plot_capture_cross_section, plot_coalescence_time, plot_n_eqs, plot_all_grids
 
 G = const.G.value
 Hubble_time = 13.8e9 

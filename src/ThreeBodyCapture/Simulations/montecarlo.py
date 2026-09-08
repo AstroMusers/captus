@@ -1,6 +1,6 @@
 import os
 import astropy.constants as const
-import src.Utils.calculations as calcs
+import captus.utils.calculations as calcs
 import numpy as np
 from astropy import units as u
 import datetime as dt

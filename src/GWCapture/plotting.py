@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from src.Utils.plotting_utils import sci_notation_latex
+from captus.utils.plotting_utils import sci_notation_latex
 import os
 from matplotlib import rcParams
 import matplotlib as mpl

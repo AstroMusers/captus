@@ -5,7 +5,7 @@ import datetime
 
 from numpy.random import Generator, PCG64, SeedSequence
 
-import src.ThreeBodyCapture.Simulations.montecarlo as MCi
+import captus.three_body_capture.simulations.montecarlo as MCi
 
 
 def _mc_worker(pars: tuple[Any, SeedSequence, float]):

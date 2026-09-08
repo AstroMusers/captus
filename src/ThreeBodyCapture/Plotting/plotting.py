@@ -5,7 +5,7 @@ from itertools import groupby
 from operator import itemgetter
 import os
 from collections.abc import Iterable
-import src.Utils.plotting_utils as plu
+import captus.utils.plotting_utils as plu
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.cm import ScalarMappable
 from matplotlib.lines import Line2D
@@ -6127,7 +6127,7 @@ class Plots:
         save : bool
             Whether to save the figure  
         """
-        
+
         if analysis_key == 'All':
             analysis_list = list(self.analysis_dicts.values())
             analysis_names = list(self.analysis_dicts.keys())

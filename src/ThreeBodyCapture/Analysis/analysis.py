@@ -2,11 +2,11 @@ import os
 import glob
 import numpy as np
 from rebound import data
-import src.Utils.calculations as calc
+import captus.utils.calculations as calc
 from astropy import units as u
 import astropy.constants as const
-import src.ThreeBodyCapture.Configurations.configuration as config
-import src.Utils.misc as misc
+import captus.three_body_capture.configurations.configuration as config
+import captus.utils.misc as misc
 import pandas as pd
 import scipy.stats as stats
 from scipy.stats import norm

@@ -1,9 +1,9 @@
 import yaml
 import numpy as np
-import src.Utils.calculations as calc
+import captus.utils.calculations as calc
 import astropy.constants as const
 from astropy import units as u
-import src.Utils.misc as misc
+import captus.utils.misc as misc
 import os, sys
 
 REPO_ROOT = misc._resolve_repo_root()

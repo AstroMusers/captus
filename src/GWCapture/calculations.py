@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.optimize import brentq
-import src.Utils.misc as misc
+import captus.utils.misc as misc
 from astropy import constants as const
 import astropy.units as u
-from src.Utils.calculations import v_pbh_pdf, get_Neq_at_r_f, integrate_gauss_legendre
+from captus.utils.calculations import v_pbh_pdf, get_Neq_at_r_f, integrate_gauss_legendre
 
 G = const.G.value
 def galactic_dm_maxwell_dist(v, r=8):

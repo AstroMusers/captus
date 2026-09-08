@@ -6,7 +6,7 @@ import time
 import numpy as np
 from numpy.random import Generator, PCG64, SeedSequence
 
-from src.ThreeBodyCapture.Simulations.rebound import OrbitalSimulation
+from captus.three_body_capture.simulations.rebound import OrbitalSimulation
 
 
 def check_result_exists(configuration, v_inf_kms, i, seed):

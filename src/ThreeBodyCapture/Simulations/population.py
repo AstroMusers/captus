@@ -3,18 +3,18 @@ from scipy.optimize import brentq
 import matplotlib.pyplot as plt
 from astropy import constants as const
 from astropy import units as u
-from src.ThreeBodyCapture.Simulations.rebound import OrbitalSimulation
+from captus.three_body_capture.simulations.rebound import OrbitalSimulation
 from numpy.random import SeedSequence, Generator, PCG64
-import src.Utils.calculations as calc
+import captus.utils.calculations as calc
 import multiprocessing
 import datetime
 from numpy.random import SeedSequence, Generator, PCG64
-import src.ThreeBodyCapture.Simulations.montecarlo as MCi
-import src.ThreeBodyCapture.Configurations.configuration as conf
-import src.ThreeBodyCapture.Analysis.analysis as anl
-import src.ThreeBodyCapture.Plotting.plotting as pl
-import src.Utils.misc as misc 
-import src.Utils.plotting_utils as pu
+import captus.three_body_capture.simulations.montecarlo as MCi
+import captus.three_body_capture.configurations.configuration as conf
+import captus.three_body_capture.analysis.analysis as anl
+import captus.three_body_capture.plotting.plotting as pl
+import captus.utils.misc as misc 
+import captus.utils.plotting_utils as pu
 import datetime as dt
 import os
 import pandas as pd
@@ -122,7 +122,7 @@ class PBHPopulation:
             configuration = p['configuration']
             name = p['name']
             print(f"Analyzing Monte Carlo results for configuration: {name}")
-            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=False)
+            analysis = anl.analysis(name=configuration.name, configuration=configuration, load_rebound=False)
             mc = analysis.get_mc_results()
             sampled_mc = analysis.get_sampled_mc_results()
             self.population_dict[name]['sampled_mc'] = sampled_mc
@@ -140,7 +140,7 @@ class PBHPopulation:
             configuration = p['configuration']
             name = p['name']
             print(f"Analyzing final results for configuration: {name}")
-            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=True)
+            analysis = anl.analysis(name=configuration.name, configuration=configuration, load_rebound=True)
             analysis_results = analysis.get_combined_dictionary(r, time_averages, update, use_cached_data)
             self.population_dict[name]['analysis'] = analysis
             self.population_dict[name]['analysis_results'] = analysis_results

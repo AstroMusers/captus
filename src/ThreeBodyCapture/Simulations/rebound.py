@@ -4,8 +4,8 @@ from astropy import units as u
 import astropy.constants as const
 import os
 import datetime
-import src.Utils.exceptions as exc
-import src.Utils.calculations as calcs
+import captus.utils.exceptions as exc
+import captus.utils.calculations as calcs
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 directoryp = os.path.join(REPO_ROOT, f'plots/ReboundSim/Plots')
