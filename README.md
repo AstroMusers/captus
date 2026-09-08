@@ -3,6 +3,33 @@
 
 `captus` uses the N-body integrator [Rebound](https://github.com/hannorein/rebound).
 
+## Installation
+
+### Clone captus
+
+```bash
+git clone https://github.com/AstroMusers/captus.git
+cd captus
+```
+### Create environment
+
+```bash
+conda create -n captus python=3.11
+conda activate captus
+```
+### Install
+
+```bash
+python -m pip install -e .
+```
+
+## Testing
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
 
 # Acknowledgements
 

@@ -24,6 +24,9 @@ dependencies = [
     "rebound",
     "scipy",
     "PyYAML",
+    "pytextable",
+    "corner",
+    "seaborn"
 ]
 
 # If you need to depend on REBOUND from GitHub, prefer documenting installation steps
@@ -33,7 +36,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest"
+    "pytest",
+    "build",
 ]
 
 # Developer convenience: install rebound directly from the repo
