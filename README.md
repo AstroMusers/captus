@@ -24,15 +24,15 @@ python -m pip install -e .
 ```
 #### PBHbounds dependency
 
-Some CAPTUS functionality uses a modified version of [PBHbounds](https://github.com/bradkav/PBHbounds) for primordial black hole observational constraints.
+Some `captus` functionality uses a modified version of [PBHbounds](https://github.com/bradkav/PBHbounds) for primordial black hole observational constraints.
 
-CAPTUS currently relies on a fork of PBHbounds containing compatibility changes required by the CAPTUS analysis and plotting routines:
+`captus` currently relies on a fork of PBHbounds containing compatibility changes required by the `captus` analysis and plotting routines:
 
 ```bash
 git clone https://github.com/aesar77/PBHbounds.git
 ```
 
-PBHbounds is kept as a separate repository and is not installed automatically with CAPTUS.
+PBHbounds is kept as a separate repository and is not installed automatically with `captus`.
 
 ### Configure the PBHbounds path
 
@@ -73,7 +73,7 @@ echo $PBHBOUNDS_PATH
 
 ### Using PBHbounds from Jupyter
 
-Jupyter must be launched from an environment that has access to `PBHBOUNDS_PATH`. After activating the CAPTUS environment, verify the variable and launch Jupyter:
+Jupyter must be launched from an environment that has access to `PBHBOUNDS_PATH`. After activating the `captus` environment, verify the variable and launch Jupyter:
 
 ```bash
 conda activate captus
@@ -81,7 +81,7 @@ echo $PBHBOUNDS_PATH
 jupyter lab
 ```
 
-Inside Python or a notebook, you can verify that CAPTUS can see the variable with:
+Inside Python or a notebook, you can verify that `captus` can see the variable with:
 
 ```python
 import os
@@ -91,16 +91,16 @@ print(os.environ.get("PBHBOUNDS_PATH"))
 
 ### Reproducibility
 
-For reproducible CAPTUS results, use the PBHbounds fork linked above rather than the unmodified upstream repository. The CAPTUS-compatible fork contains changes required by the current integration.
+For reproducible `captus` results, use the PBHbounds fork linked above rather than the unmodified upstream repository. The `captus`-compatible fork contains changes required by the current integration.
 
-For a fully reproducible release, the specific PBHbounds commit or release tag used with a given CAPTUS release should be checked out before running the analysis:
+For a fully reproducible release, the specific PBHbounds commit or release tag used with a given `captus` release should be checked out before running the analysis:
 
 ```bash
 cd PBHbounds
 git checkout captus-v1
 ```
 
-The corresponding PBHbounds revision is documented with each CAPTUS release.
+The corresponding PBHbounds revision is documented with each `captus` release.
 
 ### Attribution
 
