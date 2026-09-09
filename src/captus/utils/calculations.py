@@ -2,7 +2,8 @@ import astropy.constants as const
 from math import pi
 import numpy as np
 from numpy.polynomial.legendre import leggauss
-from numpy import linalg
+from pathlib import Path
+import importlib
 from scipy.optimize import brentq, minimize_scalar
 from astropy import units as u
 import os
@@ -1753,15 +1754,40 @@ def get_pbh_fraction_bounds(Mpbh, bound_id, return_all_bounds=False):
     -------
     dict : Contains 'mC_Msun' and bound values 'bound_{bound_id}' for each constraint
     """
-    try:
-        # Dynamically import tools from PBHbounds
-        import sys
-        pbhbounds_path = os.path.join(REPO_ROOT, 'PBHbounds')
-        if pbhbounds_path not in sys.path:
-            sys.path.insert(0, pbhbounds_path)
-        import tools
-    except ImportError as e:
-        raise ImportError(f"Could not import tools from PBHbounds: {e}")
+    def load_pbhbounds_tools(pbhbounds_path):
+        pbhbounds_path = Path(pbhbounds_path)
+        tools_path = pbhbounds_path / "tools.py"
+
+        if not tools_path.exists():
+            raise FileNotFoundError(
+                f"PBHbounds tools.py not found at: {tools_path}"
+            )
+
+        spec = importlib.util.spec_from_file_location(
+            "pbhbounds_tools",
+            tools_path,
+        )
+
+        if spec is None or spec.loader is None:
+            raise ImportError(
+                f"Could not create import spec for {tools_path}"
+            )
+
+        tools = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tools)
+
+        return tools
+
+    # Get the PBHbounds path from the environment variable
+    pbhbounds_path = os.environ.get("PBHBOUNDS_PATH")
+
+    if pbhbounds_path is None:
+        raise ValueError(
+            "PBHbounds path not provided. Pass pbhbounds_path=... "
+            "or set the PBHBOUNDS_PATH environment variable."
+        )
+    # Load PBHbounds tools module
+    tools = load_pbhbounds_tools(pbhbounds_path)
     
     # Convert mC from kg to solar masses
     mC_kg = Mpbh

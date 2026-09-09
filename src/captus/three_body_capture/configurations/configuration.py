@@ -5,15 +5,17 @@ import astropy.constants as const
 from astropy import units as u
 import captus.utils.misc as misc
 import os, sys
+from importlib.resources import files
 
-REPO_ROOT = misc._resolve_repo_root()
+import yaml
+
 
 class Configuration:
     def __init__(self, name, seed, importance_sampling=False, config_file=None):
         # Load configuration from file
         self.name = name
         self.seed = seed
-        self.config_file = os.path.join(REPO_ROOT, config_file) if config_file else None
+        self.config_file = config_file
         self.importance_sampling = importance_sampling
         self._set_params()
 
@@ -26,22 +28,52 @@ class Configuration:
             cfg = yaml.safe_load(open(self.config_file))
         else:
             if 'Sun' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/SunJupiter.yaml')))
+                config_path = (
+                    files("captus.three_body_capture.configurations")
+                    / "SunJupiter.yaml"
+                )
+                with config_path.open("r") as f:
+                    cfg = yaml.safe_load(f)
                 if 'lightPBH' in self.name:
                     sys_params = cfg['system_param_dict_lightPBH']
                 if 'massivePBH' in self.name:
                     sys_params = cfg['system_param_dict_massivePBH']
 
             if 'Cygnus' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/CygnusX1.yaml')))
+                config_path = (
+                    files("captus.three_body_capture.configurations")
+                    / "CygnusX1.yaml"
+                )
+
+                with config_path.open("r") as f:
+                    cfg = yaml.safe_load(f)
 
             if 'Intermediate' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/IntermediateBHStar.yaml')))
+                config_path = (
+                    files("captus.three_body_capture.configurations")
+                    / "IntermediateBHStar.yaml"
+                )
+
+                with config_path.open("r") as f:
+                    cfg = yaml.safe_load(f)
 
             if 'OmegaCenturi' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/OmegaCenturi.yaml')))
+                config_path = (
+                    files("captus.three_body_capture.configurations")
+                    / "OmegaCenturi.yaml"
+                )
+
+                with config_path.open("r") as f:
+                    cfg = yaml.safe_load(f)
+
             if 'BetaPictoris' in self.name:
-                cfg = yaml.safe_load(open(os.path.join(REPO_ROOT, 'src/ThreeBodyCapture/Configurations/BetaPictoris.yaml')))
+                config_path = (
+                    files("captus.three_body_capture.configurations")
+                    / "BetaPictoris.yaml"
+                )
+
+                with config_path.open("r") as f:
+                    cfg = yaml.safe_load(f)
 
         if sys_params is None:
             sys_params = cfg['system_param_dict']

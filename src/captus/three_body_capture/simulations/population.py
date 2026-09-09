@@ -122,7 +122,7 @@ class PBHPopulation:
             configuration = p['configuration']
             name = p['name']
             print(f"Analyzing Monte Carlo results for configuration: {name}")
-            analysis = anl.analysis(name=configuration.name, configuration=configuration, load_rebound=False)
+            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=False)
             mc = analysis.get_mc_results()
             sampled_mc = analysis.get_sampled_mc_results()
             self.population_dict[name]['sampled_mc'] = sampled_mc
@@ -140,7 +140,7 @@ class PBHPopulation:
             configuration = p['configuration']
             name = p['name']
             print(f"Analyzing final results for configuration: {name}")
-            analysis = anl.analysis(name=configuration.name, configuration=configuration, load_rebound=True)
+            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=True)
             analysis_results = analysis.get_combined_dictionary(r, time_averages, update, use_cached_data)
             self.population_dict[name]['analysis'] = analysis
             self.population_dict[name]['analysis_results'] = analysis_results

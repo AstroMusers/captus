@@ -9,6 +9,7 @@ import captus.utils.misc as misc
 import pandas as pd
 import scipy.stats as stats
 from pathlib import Path
+import importlib.util
 from scipy.stats import norm
 import copy
 import pickle
@@ -44,19 +45,19 @@ class Analysis:
             if isinstance(results_dir_mc, list):
                 self.mc_dir = [Path(dir) for dir in results_dir_mc]
             else:
-                self.mc_dir = Path.cwd() / results_dir_mc
+                self.mc_dir = Path(results_dir_mc)
         
         else:
-            self.mc_dir = Path.cwd() / f'runs/{name}/Monte_Carlo_Results/'
+            self.mc_dir = Path(os.path.join(Path.cwd(), '../', f'runs/{name}/Monte_Carlo_Results/'))
             self.mc_dir.mkdir(parents=True, exist_ok=True)
 
         if results_dir_rebound is not None:
             if isinstance(results_dir_rebound, list):
                 self.rebound_dir = [Path(dir) for dir in results_dir_rebound]
             else:
-                self.rebound_dir = Path.cwd() / results_dir_rebound
+                self.rebound_dir = Path(results_dir_rebound)
         else:
-            self.rebound_dir = Path.cwd() / f'runs/{name}/Rebound_Simulation_Results/'
+            self.rebound_dir = Path(os.path.join(Path.cwd(), '../', f'runs/{name}/Rebound_Simulation_Results/'))
             self.rebound_dir.mkdir(parents=True, exist_ok=True)
 
         print(f'Loading MC results from: {self.mc_dir}')
@@ -1071,15 +1072,40 @@ class Analysis:
         -------
         dict : Contains 'mC_Msun' and bound values 'bound_{bound_id}' for each constraint
         """
-        try:
-            # Dynamically import tools from PBHbounds
-            import sys
-            pbhbounds_path = os.path.join(REPO_ROOT, 'PBHbounds')
-            if pbhbounds_path not in sys.path:
-                sys.path.insert(0, pbhbounds_path)
-            import tools
-        except ImportError as e:
-            raise ImportError(f"Could not import tools from PBHbounds: {e}")
+        def load_pbhbounds_tools(pbhbounds_path):
+            pbhbounds_path = Path(pbhbounds_path)
+            tools_path = pbhbounds_path / "tools.py"
+
+            if not tools_path.exists():
+                raise FileNotFoundError(
+                    f"PBHbounds tools.py not found at: {tools_path}"
+                )
+
+            spec = importlib.util.spec_from_file_location(
+                "pbhbounds_tools",
+                tools_path,
+            )
+
+            if spec is None or spec.loader is None:
+                raise ImportError(
+                    f"Could not create import spec for {tools_path}"
+                )
+
+            tools = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tools)
+
+            return tools
+
+        # Get the PBHbounds path from the environment variable
+        pbhbounds_path = os.environ.get("PBHBOUNDS_PATH")
+
+        if pbhbounds_path is None:
+            raise ValueError(
+                "PBHbounds path not provided. Pass pbhbounds_path=... "
+                "or set the PBHBOUNDS_PATH environment variable."
+            )
+        # Load PBHbounds tools module
+        tools = load_pbhbounds_tools(pbhbounds_path)
         
         # Convert mC from kg to solar masses
         mC_kg = catalog.get('mC')
@@ -1118,7 +1144,7 @@ class Analysis:
                 bounds_values.append(f_at_mC)
                 
             except Exception as e:
-                # print(f"Warning: Could not load bound '{bid}': {e}")
+                print(f"Warning: Could not load bound '{bid}': {e}")
                 result[f'bound_{bid}'] = np.nan
                 result[f'status_{bid}'] = "error"
         
