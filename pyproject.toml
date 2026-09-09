@@ -26,6 +26,8 @@ dependencies = [
     "scipy",
     "PyYAML",
     "pytextable",
+    "seaborn",
+    "corner",
 ]
 
 # If you need to depend on REBOUND from GitHub, prefer documenting installation steps
