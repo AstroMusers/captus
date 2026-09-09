@@ -84,7 +84,7 @@ def test_preprocess_population_builds_configuration(monkeypatch):
 
 def test_sample_mc_attaches_sampled_results(monkeypatch):
     monkeypatch.setattr(pop_mod.conf, "Configuration", DummyConfiguration)
-    monkeypatch.setattr(pop_mod.anl, "analysis", DummyAnalysis, raising=False)
+    monkeypatch.setattr(pop_mod.anl, "Analysis", DummyAnalysis)
 
     pop = PBHPopulation(
         system_name="TestSystem",
@@ -103,7 +103,7 @@ def test_sample_mc_attaches_sampled_results(monkeypatch):
 
 def test_analyze_population_attaches_analysis_results(monkeypatch):
     monkeypatch.setattr(pop_mod.conf, "Configuration", DummyConfiguration)
-    monkeypatch.setattr(pop_mod.anl, "analysis", DummyAnalysis, raising=False)
+    monkeypatch.setattr(pop_mod.anl, "Analysis", DummyAnalysis)
 
     pop = PBHPopulation(
         system_name="TestSystem",
