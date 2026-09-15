@@ -49,4 +49,4 @@ simulation_param_dict:
   sample_size: 100        # int
   max_e: 1.00          # float
   vDM: 220000.0          # float
-
+  tau_max: 10000000
