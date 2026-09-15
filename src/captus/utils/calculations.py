@@ -1211,6 +1211,36 @@ def rate_and_error(cap_rate, sigma_hat, sigma_se, conf=[0.68, 0.95]):
 
     return mean_rate, se, ci
 
+def bootstrap_rmst(times, events, tau_max, rng, n_boot=2000):
+
+    from lifelines import KaplanMeierFitter
+    from lifelines.utils import restricted_mean_survival_time
+
+    n = len(times)
+    rmst_samples = np.empty(n_boot)
+
+    for j in range(n_boot):
+
+        idx = rng.integers(0, n, size=n)
+
+        t_boot = times[idx]
+        e_boot = events[idx]
+
+        kmf = KaplanMeierFitter()
+        kmf.fit(t_boot, event_observed=e_boot)
+
+        rmst_samples[j] = restricted_mean_survival_time(
+            kmf,
+            t=tau_max
+        )
+
+    return {
+        "bootsrap_mean": np.mean(rmst_samples),
+        "se": np.std(rmst_samples, ddof=1),
+        "ci95": np.quantile(rmst_samples, [0.025, 0.975]),
+        "samples": rmst_samples,
+    }
+
 def gl_effective_weights(x, n=100, exclude_zeros=False):
     """
     Return effective linear weights alpha_k such that
