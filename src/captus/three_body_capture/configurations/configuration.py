@@ -6,7 +6,7 @@ from astropy import units as u
 import captus.utils.misc as misc
 import os, sys
 from importlib.resources import files
-
+from pathlib import Path
 import yaml
 
 
@@ -175,17 +175,17 @@ class Configuration:
     def _set_save_dir(self, mc_dir=None, rebound_dir=None, plots_dir=None):
         name = self.name
         dir_mc = mc_dir if mc_dir else f'runs/{name}/Monte_Carlo_Results'
-        save_dir_mc = os.path.join(REPO_ROOT, dir_mc)
+        save_dir_mc = os.path.join(Path.cwd(), '../',dir_mc)
         os.makedirs(save_dir_mc, exist_ok=True)
         self.save_dir_mc = save_dir_mc
 
         dir_rebound = rebound_dir if rebound_dir else f'runs/{name}/Rebound_Simulation_Results'
-        save_dir_rebound = os.path.join(REPO_ROOT, dir_rebound)
+        save_dir_rebound = os.path.join(Path.cwd(), '../', dir_rebound)
         os.makedirs(save_dir_rebound, exist_ok=True)
         self.save_dir_rebound = save_dir_rebound
 
         dir_plots = plots_dir if plots_dir else f'plots/{name}'
-        save_dir_plots = os.path.join(REPO_ROOT, dir_plots)
+        save_dir_plots = os.path.join(Path.cwd(), '../', dir_plots)
         os.makedirs(save_dir_plots, exist_ok=True)
         self.save_dir_plots = save_dir_plots
 
