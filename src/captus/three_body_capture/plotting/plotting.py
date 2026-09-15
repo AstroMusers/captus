@@ -486,7 +486,7 @@ class Plots:
         for a in analysis_list:
             vkey = list(a.keys())[0]
             zkey = self._get_metric_from_sources(a, vkey, analysis_zkey)
-            zkey = zkey / const.M_sun.value if 'M$_{\odot}$' in analysis_zlabel else zkey
+            zkey = zkey / const.M_sun.value if r'M$_{\odot}$' in analysis_zlabel else zkey
             zkey_values.append(zkey)
             if normalize:
                 normalization_const = self._get_metric_from_sources(a, vkey, normalize)
@@ -1034,7 +1034,7 @@ class Plots:
 
         for a in analysis_list:
             zkey = self._get_metric_from_sources(a, v_key=None, metric_name=analysis_zkey)
-            zkey = zkey / const.M_sun.value if 'M$_{\odot}$' in analysis_zlabel else zkey
+            zkey = zkey / const.M_sun.value if r'M$_{\odot}$' in analysis_zlabel else zkey
             zkey_values.append(zkey)
             if normalize:
                 normalization_const = self._get_metric_from_sources(a, v_key=None, metric_name=normalize)
@@ -1231,7 +1231,7 @@ class Plots:
 
         for a in analysis_list:
             zkey = self._get_metric_from_sources(a, v_key=None, metric_name=analysis_zkey)
-            zkey = zkey / const.M_sun.value if 'M$_{\odot}$' in analysis_zlabel else zkey
+            zkey = zkey / const.M_sun.value if r'M$_{\odot}$' in analysis_zlabel else zkey
             zkey_values.append(zkey)
             if normalize:
                 normalization_const = self._get_metric_from_sources(a, v_key=None, metric_name=normalize)
@@ -1481,7 +1481,7 @@ class Plots:
         for a in analysis_list:
             vkey = list(a.keys())[0]
             zkey = self._get_metric_from_sources(a, vkey, analysis_zkey)
-            zkey = zkey / const.M_sun.value if 'M$_{\odot}$' in analysis_zlabel else zkey
+            zkey = zkey / const.M_sun.value if r'M$_{\odot}$' in analysis_zlabel else zkey
             zkey_values.append(zkey)
             if normalize:
                 normalization_const = self._get_metric_from_sources(a, vkey, normalize)
@@ -2716,7 +2716,7 @@ class Plots:
         bw_adjust : float
             Bandwidth adjustment factor (default 0.7)
         thresh : float
-            Threshold for KDE contours (0.1 = 10\% of max density)
+            Threshold for KDE contours (0.1 = 10% of max density)
         plot_outliers : bool
             Whether to plot scatter points outside KDE contours
         """
@@ -6071,7 +6071,7 @@ class Plots:
             fig.tight_layout()
             fig.savefig(out, dpi=300)
 
-    def plot_kde(self, metric_lists, metric_labels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], global_ylim=False, metric_range=None, metric_masks=None,  normalization=1, thresh=0.1, levels=10, bw_adjust=0.6, zorder=[1,1,1], alpha=[1,1,1], linewidth=[1,1,1], linestyle=['-', '--', ':'], cmaps=None, fig_size=(3.5, 3), fill=[True,True,True], unit_change=(1, 1), reverse_axes=None, scale=('linear', 'linear'), ticks=None, ranges=None,  cut=3.0, extra_scatters=None,extra_fills=None, bh3_mass_adjustment=None, save=False, save_as=None):
+    def plot_kde(self, metric_lists, metric_labels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], global_ylim=False, metric_range=None, metric_masks=None,  normalization=1, thresh=0.1, levels=10, bw_adjust=0.6, zorder=[1,1,1], alpha=[1,1,1], linewidth=[1,1,1], linestyle=['-', '--', ':'], cmaps=None, fig_size=(3.5, 3), fill=[True,True,True], unit_change=(1, 1), reverse_axes=None, scale=('linear', 'linear'), ticks=None, ranges=None,  cut=3.0, extra_scatters=None,extra_fills=None, bh3_mass_adjustment=None, save=False, save_as=None, ax=None, fontsize=None):
         """
         Plot KDEs for multiple analyses with twin axes, showing distributions for each analysis with different lines.
         - Top X-axis: metric_lists[0] (e.g., semi-major axis)
@@ -6123,7 +6123,9 @@ class Plots:
         save_as : str
             Filename to save the figure as (without path)
         save : bool
-            Whether to save the figure  
+            Whether to save the figure
+        ax : matplotlib.axes.Axes, optional
+            Existing matplotlib axis to plot on. If None, a new figure and axis will be created.
         """
         
         if analysis_key == 'All':
@@ -6188,13 +6190,20 @@ class Plots:
 
                         metrics[metric_lists[0].index(metric_name)][analysis_idx].extend(metric)
 
-            
-        fig, axs = plt.subplots(1, 1, figsize=fig_size)
+        
+        # Create figure and axes if not provided
+        if ax is None:
+            fig, axs = plt.subplots(1, 1, figsize=fig_size)
+        else:
+            axs = ax
+            fig = ax.get_figure()
         if cmaps is None:
             ccs = ['Purples', 'Oranges', 'Blues', 'Reds']
         else:
             ccs = cmaps
 
+        if fontsize is not None:
+            plt.rcParams.update({'font.size': fontsize})
 
         i=0
 
@@ -6281,8 +6290,8 @@ class Plots:
             my_cmap = LinearSegmentedColormap.from_list("mycmap", cmap_cols)
             sns.kdeplot(x=metric_labels[0], y=metric_labels[1], data=df, ax=axs, cmap=my_cmap, **kde_kw)
                 
-            axs.set_ylabel(f'', fontsize=9)
-            axs.set_xlabel(f'', fontsize=9)
+            axs.set_ylabel(f'')
+            axs.set_xlabel(f'')
             kde = gaussian_kde(np.vstack([x_array, y_array]), bw_method='scott')
             kde.set_bandwidth(kde.factor * kde_kw['bw_adjust'])  # ← Match your bw_adjust=0.7
             density = kde(np.vstack([x_array, y_array]))
@@ -6428,7 +6437,10 @@ class Plots:
 
         axs.set_xlabel(f'{metric_labels[0]}')
         axs.set_ylabel(f'{metric_labels[1]}')
-        fig.tight_layout()
+        
+        # Only adjust layout if we created the figure (not using external axis)
+        if ax is None:
+            fig.tight_layout()
 
         if save:
             if save_as is not None:
@@ -6437,7 +6449,10 @@ class Plots:
                 figname = f'{metric_labels[0].strip()}_vs_{metric_labels[1].strip()}_kde.png'
             plt.savefig(figname, dpi=300)
             print(f"Saved KDE plot as {figname}")
-        plt.show()
+        
+        # Only show if we created the figure (not using external axis)
+        if ax is None:
+            plt.show()
         
 
 
