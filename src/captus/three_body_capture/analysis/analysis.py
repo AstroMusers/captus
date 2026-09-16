@@ -25,6 +25,7 @@ class Analysis:
         self.system_param_dict = configuration.get_system_param(all=True)
         self.simulation_param_dict = configuration.get_simulation_param(all=True)
         self.mc_sample_size = self.simulation_param_dict['sample_size']
+        self.tau_max = self.simulation_param_dict['tau_max']
         self.load = load
         self.load_rebound = load_rebound
 
@@ -32,8 +33,10 @@ class Analysis:
             self.mc_sample_size = min(self.mc_sample_size, self.load)
 
         if rng is None:
-            seed = self.system_param_dict['seed_base']
+            seed = self.system_param_dict["seed_base"]
             self.rng = np.random.default_rng(seed)
+        else:
+            self.rng = rng
 
         if self.simulation_param_dict['importance_sampling']:
             trials = self.simulation_param_dict['max_trials']
@@ -315,14 +318,21 @@ class Analysis:
             keys = data.files if hasattr(data, "files") else data.keys()
 
             n_captured = int(np.asarray(data["n_captured"]).item())
-
+            sample_number = int(np.asarray(data["sample_number"]).item())
             if n_captured == 0:
                 continue
 
             if n_captured <= self.mc_sample_size:
                 idx = np.arange(n_captured)
+                
             else:
-                idx = self.rng.choice(n_captured, size=self.mc_sample_size, replace=False)
+                sample_number_norm = n_captured / sample_number
+
+                # idx = self.rng.choice(n_captured, size=self.mc_sample_size, replace=False)
+                n_captured = self.mc_sample_size  # Update n_captured to reflect the sampled size
+                idx = np.arange(n_captured)  # Use all captured indices if n_captured <= mc_sample_size
+                sample_number = n_captured / sample_number_norm
+                print('n_captured', n_captured, 'sample number', sample_number)
 
             sampled_dict = {}
 
@@ -335,6 +345,8 @@ class Analysis:
                     sampled_dict[key] = val
 
             sampled_dict["idx"] = idx
+            sampled_dict["sample_number"] = sample_number
+            sampled_dict["n_captured"] = n_captured  # Update n_captured in the sampled dictionary
             sampled_mc[v] = sampled_dict
 
             # print(f"v_inf = {v} km/s: sampled {len(idx)} captured objects")
@@ -529,7 +541,8 @@ class Analysis:
         # sigma_cap_recalc = calc.capture_cross_section_MC(b, n_sampled, b_min, b_max)
         # sigma_cap = (sampled_mc["sigma_MC_dsigma_captured_m2"] * u.m**2).to(u.au**2).value
         # sigma_cap = np.sum((sampled_mc["capture_cross_sections_captured"]* u.m**2).to(u.au**2).value)  # already in au^2
-        n_captured = len(sampled_mc["idx"])
+        # n_captured = len(sampled_mc["idx"])
+        n_captured = n_sampled_captures
 
         # b_max = np.max(b_max_sampled*u.m).to(u.au).value
         # b_min = np.min(b_min_sampled*u.m).to(u.au).value
@@ -602,8 +615,21 @@ class Analysis:
         collided_lifetimes = lifetimes_arr[coll_mask == 1] if len(lifetimes_arr) > 0 else np.array([])
         terminated_lifetimes = lifetimes_arr[term_mask == 1] if len(lifetimes_arr) > 0 else np.array([])
         
-        lifetimes_average = np.mean(lifetimes) if len(lifetimes) > 0 else None
-        total_rate = 1 / lifetimes_average if lifetimes_average is not None and lifetimes_average > 0 else 0.0
+        # lifetimes_average = np.mean(lifetimes) if len(lifetimes) > 0 else None
+        # total_rate = 1 / lifetimes_average if lifetimes_average is not None and lifetimes_average > 0 else 0.0
+        lifetimes_average, bootstrap_dict = self._get_lifetime_calc(
+            rebound_list
+        )
+
+        if lifetimes_average is not None and lifetimes_average > 0:
+            total_rate = 1.0 / lifetimes_average
+            neq_total = capture_rate * lifetimes_average
+        else:
+            total_rate = 0.0
+            neq_total = 0.0
+
+        total_rate = 1.0 / lifetimes_average
+        neq_total = capture_rate * lifetimes_average
 
         lifetimes_ejected_average = np.mean(ejected_lifetimes) if len(ejected_lifetimes) > 0 else None
         ejection_rate = 1 / lifetimes_ejected_average if lifetimes_ejected_average is not None and lifetimes_ejected_average > 0 else 0.0   
@@ -624,7 +650,7 @@ class Analysis:
         neq_ejected = frac_ejected * capture_rate / ejection_rate if ejection_rate > 0 else 0.0
         neq_collided = frac_collided * capture_rate / collision_rate if collision_rate > 0 else 0.0
         neq_terminated = capture_rate / termination_rate if termination_rate > 0 else 0.0
-        neq_total = capture_rate / total_rate if total_rate > 0 else 0.0
+        # neq_total = capture_rate / total_rate if total_rate > 0 else 0.0
         # neq_total_r = capture_rate_r / total_rate if total_rate > 0 else 0.0
         neq_total_array = capture_rate_array / total_rate if total_rate > 0 else 0.0
 
@@ -651,14 +677,26 @@ class Analysis:
             "total_systems_neq": neq_total,
             "total_systems_neq_array": neq_total_array,
             # "total_systems_neq_r": neq_total_r,
-            "average_lifetime_collided": np.mean(collided_lifetimes) if len(collided_lifetimes) > 0 else None,
-            "average_lifetime_terminated": np.mean(terminated_lifetimes) if len(terminated_lifetimes) > 0 else None,
-            "average_lifetime_total": np.mean(lifetimes) if len(lifetimes) > 0 else None,
+            "average_lifetime_collided": 
+                np.mean(collided_lifetimes) if len(collided_lifetimes) > 0 else None,
+            "average_lifetime_terminated": 
+                np.mean(terminated_lifetimes) if len(terminated_lifetimes) > 0 else None,
+
+            "average_lifetime_total": lifetimes_average,
+
+            "average_lifetime_total_se":
+                bootstrap_dict["se"] if bootstrap_dict is not None else None,
+
+            "average_lifetime_total_ci95":
+                bootstrap_dict["ci95"] if bootstrap_dict is not None else None,
+
             "terminations" : terminations,
             "dsigma_au2": sigma_au2,
             "capture_rate_array": capture_rate_array,
             "lifetimes_array": np.array(lifetimes),
         }
+    
+    
     def _total_occurrences_trapz(self, catalog):
         """
         Compute aggregate occurrences across all v bins.
@@ -853,12 +891,14 @@ class Analysis:
         }
 
     def _get_errors(self, catalog, percentile=0.95):
+
         v_keys = [v for v in catalog.keys() if 'V' in v]
         v_inf_au_yr = [catalog[v]['v_inf_au_yr'] for v in v_keys]
         Neq_std_list, Caprate_std_list, Capcrossec_std_list = [], [], []
         Neq_list, Caprate_list, Capcrossec_list = [], [], []
         Neq_tot = catalog['total_occurrences_gl']['total_systems_neq_gl'] if 'total_systems_neq_gl' in catalog['total_occurrences_gl'] else None
         Caprate_tot = catalog['total_occurrences_gl']['capture_rate_gl'] if 'capture_rate_gl' in catalog['total_occurrences_gl'] else None
+
         for v in v_keys:
             neq = catalog[v]['occurrences']['total_systems_neq'] if 'total_systems_neq' in catalog[v]['occurrences'] else None
             cap = catalog[v]['occurrences']['capture_rate'] if 'capture_rate' in catalog[v]['occurrences'] else None
@@ -881,48 +921,203 @@ class Analysis:
         # print(f" Total capture crossection: {cap_crossec}")
         caprate, cap_se, cap_ci = calc.rate_and_error(Caprate_list, sigmas, ses, conf=percentile) 
         total_cap_rate, total_cap_err, ci68, ci95, alpha, qvals = calc.integrated_rate_and_error(v_inf_au_yr, caprate, cap_se, n_gl=100, q_vals=[0.025, 0.5, 0.975])
+        
         if not np.isclose(total_cap_rate, Caprate_tot, rtol=0.01):
             print(f"Warning: Integrated capture rate {total_cap_rate:.2e} does not match catalog's capture_rate_gl {Caprate_tot:.2e} within 1% relative tolerance.")
 
         if self.rebound_results is None or len(self.rebound_results) == 0 or self.load_rebound is False:
             print("Warning: No Rebound results found. Only calculating the capture rate errors without Neq error calculation.")
-            neq, neq_se, neq_ci = None, None, None
-            total_neq, total_neq_err, neq_ci68, neq_ci95, alpha, neq_qvals = None, None, None, None, None, None
+
+            neq = None
+            neq_se = None
+            neq_ci = None
+
+            total_neq = None
+            total_neq_err = None
+            neq_ci68 = None
+            neq_ci95 = None
+            neq_alpha = None
+            neq_qvals = None
+
+            rmst = None
+            rmst_se = None
+            rmst_ci = None
+
+            error_neq_full = None
+            error_neq_bound = None
+
         else:
-            neq, neq_se, neq_ci = calc.rate_and_error(Neq_list, sigmas, ses, conf=percentile) 
-            total_neq, total_neq_err, neq_ci68, neq_ci95, alpha, neq_qvals = calc.integrated_rate_and_error(v_inf_au_yr, neq, neq_se, n_gl=100, q_vals=[0.025, 0.5, 0.975])
-            if not np.isclose(total_neq, Neq_tot, rtol=0.01):
-                print(f"Warning: Integrated Neq {total_neq:.2e} does not match catalog's total_systems_neq_gl {Neq_tot:.2e} within 1% relative tolerance.")
-            fractional_error_neq = (total_neq_err / total_neq) if total_neq is not None and total_neq > 0 else None
-            neq_full = catalog['total_pbh_neq_n']['Neq_pbh_f_full']
-            neq_bound = catalog['total_pbh_neq_n']['Neq_pbh_f_bound']
+
+            neq = []
+            neq_se = []
+            neq_ci = []
+
+            rmst = []
+            rmst_se = []
+            rmst_ci = []
+
+            z_score = norm.ppf(0.5 + percentile / 2)
+
+            for i, v in enumerate(v_keys):
+
+                occ = catalog[v]["occurrences"]
+
+                # --------------------------------------------------
+                # Central values
+                # --------------------------------------------------
+
+                R = float(occ["capture_rate"])
+
+                tau = float(occ["average_lifetime_total"])
+
+                Neq = R * tau
+
+                assert np.isclose(
+                    Neq,
+                    float(occ["total_systems_neq"]),
+                    rtol=1e-12,
+                    atol=0.0,
+                )
+
+                # Capture-rate SE calculated above
+                R_se = float(cap_se[i])
+                # RMST uncertainty from your bootstrap
+                tau_se = float(occ["average_lifetime_total_se"])
+
+                # --------------------------------------------------
+                # Propagate:
+                #
+                # Neq = R * tau
+                #
+                # Var(Neq) =
+                #     tau^2 Var(R)
+                #   + R^2 Var(tau)
+                #
+                # assuming independence.
+                # --------------------------------------------------
+
+                Neq_se = np.sqrt(
+                    (tau * R_se) ** 2
+                    + (R * tau_se) ** 2
+                )
+
+                Neq_ci = (
+                    Neq - z_score * Neq_se,
+                    Neq + z_score * Neq_se,
+                )
+
+                # Neq cannot physically be negative
+                Neq_ci = (
+                    max(0.0, Neq_ci[0]),
+                    Neq_ci[1],
+                )
+
+                neq.append(Neq)
+                neq_se.append(Neq_se)
+                neq_ci.append(Neq_ci)
+
+                rmst.append(tau)
+                rmst_se.append(tau_se)
+
+                if np.isclose(percentile, 0.95):
+                    rmst_ci.append(tuple(occ["average_lifetime_total_ci95"]))
+                else:
+                    rmst_ci.append(
+                        (
+                            max(0.0, tau - z_score * tau_se),
+                            tau + z_score * tau_se,
+                        )
+                    )
+
+            neq = np.asarray(neq, dtype=float)
+            neq_se = np.asarray(neq_se, dtype=float)
+            rmst = np.asarray(rmst, dtype=float)
+            rmst_se = np.asarray(rmst_se, dtype=float)
+
+            # ------------------------------------------------------
+            # Integrate Neq(v) and propagate its per-bin uncertainty
+            # ------------------------------------------------------
+
+            (
+                total_neq,
+                total_neq_err,
+                neq_ci68,
+                neq_ci95,
+                neq_alpha,
+                neq_qvals,
+            ) = calc.integrated_rate_and_error(
+                v_inf_au_yr,
+                neq,
+                neq_se,
+                n_gl=100,
+                q_vals=[0.025, 0.5, 0.975],
+            )
+
+            if not np.isclose(
+                total_neq,
+                Neq_tot,
+                rtol=0.01,
+            ):
+                print(
+                    f"Warning: Integrated Neq {total_neq:.2e} "
+                    f"does not match catalog's total_systems_neq_gl "
+                    f"{Neq_tot:.2e} within 1% relative tolerance."
+                )
+
+            # ------------------------------------------------------
+            # Propagate same fractional uncertainty into number
+            # densities scaled by PBH abundance
+            # ------------------------------------------------------
+
+            fractional_error_neq = (
+                total_neq_err / total_neq
+                if total_neq > 0
+                else None
+            )
+
+            neq_full = catalog["total_pbh_neq_n"]["Neq_pbh_f_full"]
+            neq_bound = catalog["total_pbh_neq_n"]["Neq_pbh_f_bound"]
+
             error_neq_full = fractional_error_neq * neq_full
             error_neq_bound = fractional_error_neq * neq_bound
 
         return {
             "percentile": percentile,
+
             "capcrossec_errors": Capcrossec_std_list,
             "total_cap_crossection": cap_crossec,
+
             "caprate": caprate,
             "caprate_se": cap_se,
             "caprate_ci": cap_ci,
+
             "total_cap_rate": total_cap_rate,
             "total_cap_err": total_cap_err,
             "total_cap_ci68": ci68,
             "total_cap_ci95": ci95,
             "total_cap_alpha": alpha,
             "total_cap_qvals": qvals,
+
+            # Survival / lifetime statistics
+            "rmst": rmst,
+            "rmst_se": rmst_se,
+            "rmst_ci": rmst_ci,
+
+            # Neq per velocity bin
             "neq": neq,
             "neq_se": neq_se,
             "neq_ci": neq_ci,
+
+            # Integrated Neq
             "total_neq": total_neq,
             "total_neq_err": total_neq_err,
-            "full_neq_err": error_neq_full,
-            "bound_neq_err": error_neq_bound,
             "total_neq_ci68": neq_ci68,
             "total_neq_ci95": neq_ci95,
-            "total_neq_alpha": alpha,
+            "total_neq_alpha": neq_alpha,
             "total_neq_qvals": neq_qvals,
+
+            "full_neq_err": error_neq_full,
+            "bound_neq_err": error_neq_bound,
         }
     
     def get_error_ci_summary(self, percentile=0.95, required_n=False):
@@ -1851,3 +2046,86 @@ class Analysis:
     #     }
 
     #     return catalog
+    def _get_survival_data(self, rebound_list):
+        """
+        Return observed/censoring times and event indicators.
+
+        event_observed = 1 : physical termination observed
+        event_observed = 0 : still alive when integration ended
+        """
+
+        times = []
+        events = []
+
+        for entry in rebound_list:
+
+            if "lifetime" not in entry.files:
+                continue
+
+            lifetime = float(np.asarray(entry["lifetime"]).item())
+
+            if not np.isfinite(lifetime) or lifetime <= 0:
+                continue
+
+            if "termination_flag" not in entry.files:
+                continue
+
+            flag = self._as_scalar(entry["termination_flag"])
+
+            # Physical termination
+            if isinstance(flag, str) and (
+                "escape_C" in flag
+                or "collision" in flag
+            ):
+                times.append(lifetime)
+                events.append(1)
+
+            # Survived until end of integration
+            elif isinstance(flag, str) and (
+                "completed" in flag
+                or "time_exceeded" in flag
+            ):
+                times.append(lifetime)
+                events.append(0)
+
+            # Numerical failures should not enter survival analysis
+            else:
+                continue
+
+        return (
+            np.asarray(times, dtype=float),
+            np.asarray(events, dtype=int),
+        )
+
+
+    def _get_lifetime_calc(self, rebound_list):
+
+        from lifelines import KaplanMeierFitter
+        from lifelines.utils import restricted_mean_survival_time
+
+        times, events = self._get_survival_data(rebound_list)
+
+        if len(times) == 0:
+            return None, None
+
+        kmf = KaplanMeierFitter()
+        kmf.fit(
+            durations=times,
+            event_observed=events,
+        )
+
+        mean_lifetime = restricted_mean_survival_time(
+            kmf,
+            t=self.tau_max,
+        )
+
+        bootstrap_dict = calc.bootstrap_rmst(
+            times,
+            events,
+            self.tau_max,
+            self.rng,
+            n_boot=500,
+        )
+
+        return mean_lifetime, bootstrap_dict
+        
