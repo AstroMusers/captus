@@ -588,3 +588,205 @@ def get_shell_sum_Neq_and_params(analysis, r_edges, M_star=1.0, fraction=1.0, sa
             pickle.dump(data, f)
 
     return all_results, integrated_results
+
+def _get_nested(d, keys):
+    """Get d[key1][key2]...[keyN]."""
+    out = d
+    for key in keys:
+        out = out[key]
+    return out
+
+
+def _format_pm(value, error, decimals=1, scientific=False):
+    """
+    Format value ± error for a LaTeX table.
+
+    Examples
+    --------
+    18 ± 1
+    (7.5 ± 0.7) × 10^{-10}
+    """
+
+    value = float(value)
+    error = float(error)
+
+    if not np.isfinite(value) or not np.isfinite(error):
+        return r"--"
+
+    if scientific:
+        if value == 0:
+            return rf"${0:.{decimals}f} \pm {error:.{decimals}f}$"
+
+        exponent = int(np.floor(np.log10(abs(value))))
+        scale = 10.0 ** exponent
+
+        v_scaled = value / scale
+        e_scaled = error / scale
+
+        return (
+            rf"$({v_scaled:.{decimals}f} \pm "
+            rf"{e_scaled:.{decimals}f}) \times 10^{{{exponent}}}$"
+        )
+
+    return rf"${value:.{decimals}f} \pm {error:.{decimals}f}$"
+
+def create_r_k_table(
+    analyses_by_r,
+    sigma=1.0,
+    selected_k=None,
+    table_metrics=None
+):
+    """
+    Construct the r-kpc table directly from Analysis objects.
+
+    Parameters
+    ----------
+    analyses_by_r : dict
+        Dictionary of the form
+
+            {
+                8.0:  [analysis_k1, ..., analysis_k8],
+                2.2:  [analysis_k1, ..., analysis_k8],
+                0.05: [analysis_k1, ..., analysis_k8],
+            }
+
+        Each list should be ordered by increasing k / PBH mass.
+
+    sigma : float, default=1
+        Error multiplier.
+        sigma=1 gives ±1 SE.
+        sigma=2 gives ±2 SE.
+
+    selected_k : list of int or None
+        Which k values to include, using 1-based indexing.
+
+        Example:
+            selected_k=[1, 6, 7, 8]
+
+        reproduces the visible numerical columns in your example.
+
+        If None, all k values are included.
+
+    Returns
+    -------
+    pandas.DataFrame
+    """
+
+    if not analyses_by_r:
+        raise ValueError("analyses_by_r cannot be empty.")
+
+    if table_metrics is None:
+        TABLE_METRICS = [
+        {
+            "label": r"$R_{\mathrm{cap},k}$ [Myr$^{-1}$]",
+            "value_path": ("total_occurrences_gl", "capture_rate_gl"),
+            "error_key": "total_cap_err",
+            "scale": 1e6,
+            "decimals": 0,
+            "scientific": False,
+        },
+        {
+            "label": r"$N_{\mathrm{eq},k}$ [$n_\infty$ AU$^3$]",
+            "value_path": ("total_occurrences_gl", "total_systems_neq_gl"),
+            "error_key": "total_neq_err",
+            "scale": 1.0,
+            "decimals": 1,
+            "scientific": False,
+        },
+        {
+            "label": r"$N_{\mathrm{eq},k}(f_{\mathrm{total}})$",
+            "value_path": ("total_pbh_neq_n", "Neq_pbh_f_full"),
+            "error_key": "full_neq_err",
+            "scale": 1.0,
+            "decimals": 1,
+            "scientific": True,
+        },
+        {
+            "label": r"$N_{\mathrm{eq},k}(f_{\mathrm{bound}})$",
+            "value_path": ("total_pbh_neq_n", "Neq_pbh_f_bound"),
+            "error_key": "bound_neq_err",
+            "scale": 1.0,
+            "decimals": 1,
+            "scientific": True,
+        },
+    ]
+    # Determine number of k bins from first radius
+    first_list = next(iter(analyses_by_r.values()))
+    n_k = len(first_list)
+
+    # Check consistency
+    for r, analyses in analyses_by_r.items():
+        if len(analyses) != n_k:
+            raise ValueError(
+                f"r={r} has {len(analyses)} analyses, "
+                f"but expected {n_k}."
+            )
+
+    if selected_k is None:
+        selected_k = list(range(1, n_k + 1))
+
+    # Convert to zero-based indices
+    selected_idx = [k - 1 for k in selected_k]
+
+    rows = []
+    index = []
+
+    for r, analyses in analyses_by_r.items():
+
+        for metric in table_metrics:
+
+            row = []
+
+            for idx in selected_idx:
+
+                analysis = analyses[idx]
+                catalog = analysis.results_dictionary
+
+                value = _get_nested(
+                    catalog,
+                    metric["value_path"],
+                )
+
+                error = catalog["errors"][
+                    metric["error_key"]
+                ]
+
+                value = float(value) * metric["scale"]
+                error = float(error) * metric["scale"] * sigma
+
+                formatted = _format_pm(
+                    value,
+                    error,
+                    decimals=metric["decimals"],
+                    scientific=metric["scientific"],
+                )
+
+                row.append(formatted)
+
+            rows.append(row)
+
+            index.append(
+                (
+                    float(r),
+                    metric["label"],
+                )
+            )
+
+    columns = [
+        rf"$k={k}$"
+        for k in selected_k
+    ]
+
+    index = pd.MultiIndex.from_tuples(
+        index,
+        names=[
+            r"$r$ [kpc]",
+            r"$G_k(v_\infty);\,M_{\mathrm{P},k}$",
+        ],
+    )
+
+    return pd.DataFrame(
+        rows,
+        index=index,
+        columns=columns,
+    )
