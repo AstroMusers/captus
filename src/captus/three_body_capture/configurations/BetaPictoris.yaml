@@ -22,7 +22,7 @@ simulation_param_dict:
   sample_size: 100        # int
   max_e: 1.00          # float
   vDM: 220000.0          # float
-
+  tau_max: 10000000          # float
 # system_param_dict:
 #   mA: 3.976819741396102e+30 # Mass of the Sun in kg
 #   mB: 5.965229612094153e+29   # Mass of Jupiter in kg
