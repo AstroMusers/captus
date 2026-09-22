@@ -9,6 +9,7 @@ import captus.utils.plotting_utils as plu
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.cm import ScalarMappable
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 import matplotlib.ticker as mt
 from astropy import units as u
 from astropy import constants as const
@@ -22,10 +23,10 @@ class Plots:
 
         self.name = name
 
-        plots_dir = Path(__file__).parent.parent / f'plots/{self.name}/Plots'
+        plots_dir = os.path.join(Path.cwd(), '../', f'plots/{self.name}/Plots')
 
-        if not plots_dir.exists():
-            plots_dir.mkdir(parents=True, exist_ok=True)
+        if not os.path.exists(plots_dir):
+            os.makedirs(plots_dir)
 
         self.plots_dir = plots_dir
 
@@ -6071,7 +6072,7 @@ class Plots:
             fig.tight_layout()
             fig.savefig(out, dpi=300)
 
-    def plot_kde(self, metric_lists, metric_labels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], global_ylim=False, metric_range=None, metric_masks=None,  normalization=1, thresh=0.1, levels=10, bw_adjust=0.6, zorder=[1,1,1], alpha=[1,1,1], linewidth=[1,1,1], linestyle=['-', '--', ':'], cmaps=None, fig_size=(3.5, 3), fill=[True,True,True], unit_change=(1, 1), reverse_axes=None, scale=('linear', 'linear'), ticks=None, ranges=None,  cut=3.0, extra_scatters=None,extra_fills=None, bh3_mass_adjustment=None, save=False, save_as=None, ax=None, fontsize=None):
+    def plot_kde(self, metric_lists, metric_labels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], global_ylim=False, metric_range=None, metric_masks=None,  normalization=1, thresh=0.1, levels=10, bw_adjust=0.6, zorder=[1,1,1], alpha=[1,1,1], linewidth=[1,1,1], linestyle=['-', '--', ':'], cmaps=None, fig_size=(3.5, 3), fill=[True,True,True], unit_change=(1, 1), reverse_axes=None, scale=('linear', 'linear'), ticks=None, ranges=None,  cut=3.0, extra_scatters=None,extra_fills=None, legend_position=None, legend_title=None, save=False, save_as=None, ax=None, fontsize=None):
         """
         Plot KDEs for multiple analyses with twin axes, showing distributions for each analysis with different lines.
         - Top X-axis: metric_lists[0] (e.g., semi-major axis)
@@ -6206,6 +6207,8 @@ class Plots:
             plt.rcParams.update({'font.size': fontsize})
 
         i=0
+        kde_legend_handles = []
+        kde_legend_labels = []
 
         # metrics = [[m] for m in metrics]
         for metric_x, metric_y, cc in zip(metrics[0], metrics[1], ccs):
@@ -6289,6 +6292,13 @@ class Plots:
             cmap_cols = cmap_obj(np.linspace(0.2, 1.0,256 ))  # Dark purple under color
             my_cmap = LinearSegmentedColormap.from_list("mycmap", cmap_cols)
             sns.kdeplot(x=metric_labels[0], y=metric_labels[1], data=df, ax=axs, cmap=my_cmap, **kde_kw)
+
+            kde_legend_handles.append(
+                Patch(facecolor=my_cmap(0.8) if fill[i] else 'none', edgecolor=my_cmap(0.8),linestyle=linestyle[i], linewidth=2.5)
+            )
+            kde_legend_labels.append(
+                fr'{analysis_zlabel[0]}={plu.sci_notation_latex(sorted_mC_values[i] / const.M_sun.value)} {analysis_zlabel[1]}'
+            )
                 
             axs.set_ylabel(f'')
             axs.set_xlabel(f'')
@@ -6434,20 +6444,39 @@ class Plots:
         if ticks:
             axs.set_xticks(ticks[0] if ticks and ticks[0] else None)
             axs.set_yticks(ticks[1] if ticks and ticks[1] else None)
+            axs.tick_params(axis='x', which='major', labelsize=fontsize-2)
+            axs.tick_params(axis='y', which='major', labelsize=fontsize-2)
 
-        axs.set_xlabel(f'{metric_labels[0]}')
-        axs.set_ylabel(f'{metric_labels[1]}')
+        axs.set_xlabel(f'{metric_labels[0]}', fontsize=fontsize)
+        axs.set_ylabel(f'{metric_labels[1]}', fontsize=fontsize)
         
         # Only adjust layout if we created the figure (not using external axis)
-        if ax is None:
-            fig.tight_layout()
+        
+        fig.tight_layout()
+
+        if legend_position is not None:
+            existing_legend = axs.get_legend()
+            if kde_legend_handles:
+                kde_legend = axs.legend(
+                    kde_legend_handles,
+                    kde_legend_labels,
+                    frameon=False,
+                    fontsize=fontsize-4,
+                    loc='center right',
+                    title=legend_title,
+                    bbox_to_anchor=legend_position,
+                    title_fontsize='small'
+                )
+                if existing_legend is not None:
+                    axs.add_artist(existing_legend)
 
         if save:
             if save_as is not None:
                 figname = save_as
             else:
                 figname = f'{metric_labels[0].strip()}_vs_{metric_labels[1].strip()}_kde.png'
-            plt.savefig(figname, dpi=300)
+            figpath = os.path.join(self.plots_dir, figname)
+            plt.savefig(figpath, dpi=300)
             print(f"Saved KDE plot as {figname}")
         
         # Only show if we created the figure (not using external axis)
