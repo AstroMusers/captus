@@ -7,5 +7,6 @@ __all__ = [
     "ThreeBodyCapture",
     "PBHPopulation",
     "ThreeBodyEvolution",
+    "Plots",
 
 ]
