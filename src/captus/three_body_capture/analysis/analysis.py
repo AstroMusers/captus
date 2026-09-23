@@ -19,7 +19,7 @@ import json
 # print(f'Using REPO_ROOT: {REPO_ROOT}')
 
 class Analysis:
-    def __init__(self, name, configuration, load='All', load_rebound=True, rng=None, results_dir_mc=None, results_dir_rebound=None):
+    def __init__(self, name, configuration, load='All', load_rebound=True, rng=None, results_dir_mc=None, results_dir_rebound=None, conservative_results=True):
 
         self.name = name
         self.system_param_dict = configuration.get_system_param(all=True)
@@ -28,9 +28,12 @@ class Analysis:
         self.tau_max = self.simulation_param_dict['tau_max']
         self.load = load
         self.load_rebound = load_rebound
+        self.conservative_results = conservative_results
+        self.validate_system_matching = True
 
         if self.load != 'All':
             self.mc_sample_size = min(self.mc_sample_size, self.load)
+        
 
         if rng is None:
             seed = self.system_param_dict["seed_base"]
@@ -137,24 +140,44 @@ class Analysis:
 
         return mc_results
     
+
+    
     def _load_rebound_results(self):
 
+        def _velocity_folder_sort_key(folder):
+                return float(folder[1:])
+        
         rebound_results = {}
         
         # Get all v folders
         if isinstance(self.rebound_dir, list):
-            all_v_folders = []
-            for dir in self.rebound_dir:
-                all_v_folders.extend(sorted([
-                    f for f in os.listdir(dir) 
-                    if f.startswith("v") and os.path.isdir(os.path.join(dir, f))
-                ]))
-            
+
+            all_v_folders = sorted(
+                {
+                    f
+                    for directory in self.rebound_dir
+                    for f in os.listdir(directory)
+                    if f.startswith("v")
+                    and os.path.isdir(
+                        os.path.join(directory, f)
+                    )
+                },
+                key=_velocity_folder_sort_key,
+            )
+
         else:
-            all_v_folders = sorted([
-                f for f in os.listdir(self.rebound_dir) 
-                if f.startswith("v") and os.path.isdir(os.path.join(self.rebound_dir, f))
-            ])
+
+            all_v_folders = sorted(
+                [
+                    f
+                    for f in os.listdir(self.rebound_dir)
+                    if f.startswith("v")
+                    and os.path.isdir(
+                        os.path.join(self.rebound_dir, f)
+                    )
+                ],
+                key=_velocity_folder_sort_key,
+            )
         
         # Limit folders if needed
         v_folders = all_v_folders if self.load == 'All' else all_v_folders[:self.load]
@@ -189,6 +212,23 @@ class Analysis:
                         entries.append(data)
                     except Exception as e:
                         print(f"Failed to load Rebound {f}: {e}")
+
+                # Sort by the actual MC capture index stored in the result,
+                # not by filename.
+                entries.sort(
+                    key=lambda entry: int(
+                        np.asarray(entry["i"]).item()
+                    )
+                )
+                ids = [
+                    int(np.asarray(entry["i"]).item())
+                    for entry in entries
+                ]
+
+                if len(ids) != len(set(ids)):
+                    raise ValueError(
+                        f"Duplicate REBOUND indices in {v_folder}: {ids}"
+                    )
             
             v_key = self._vkey_from_vinf(float(v_folder[1:])*1e3)
             rebound_results[v_key] = entries
@@ -196,7 +236,153 @@ class Analysis:
 
         return rebound_results
     
+    def _match_rebound_to_mc(
+        self,
+        sampled_mc,
+        rebound_list,
+        v_key=None,
+        validate_inputs=True,
+    ):
+        """
+        Match REBOUND simulations to captured MC systems using the stored
+        MC capture index `i`.
 
+        Returns
+        -------
+        dict
+            {capture_index: rebound_entry}
+
+        Notes
+        -----
+        `i` in each REBOUND file is the index into the MC cap_* arrays
+        for this velocity bin.
+        """
+
+        if rebound_list is None:
+            return {}
+
+        rebound_by_i = {}
+
+        for entry in rebound_list:
+
+            if "i" not in entry.files:
+                raise ValueError(
+                    f"REBOUND entry in {v_key} has no stored 'i'."
+                )
+
+            i = int(np.asarray(entry["i"]).item())
+
+            if i in rebound_by_i:
+                raise ValueError(
+                    f"Duplicate REBOUND index i={i} in {v_key}."
+                )
+
+            rebound_by_i[i] = entry
+
+        mc_ids = np.asarray(
+            sampled_mc["idx"],
+            dtype=int,
+        )
+
+        mc_id_set = set(mc_ids.tolist())
+        rb_id_set = set(rebound_by_i.keys())
+
+        missing_rebound = sorted(mc_id_set - rb_id_set)
+        unexpected_rebound = sorted(rb_id_set - mc_id_set)
+
+        if missing_rebound:
+            print(
+                f"Warning: {v_key}: "
+                f"{len(missing_rebound)} sampled MC systems "
+                f"have no REBOUND result. "
+                f"First missing IDs: {missing_rebound[:10]}"
+            )
+
+        if unexpected_rebound:
+            raise ValueError(
+                f"{v_key}: REBOUND contains indices not present "
+                f"in sampled MC: {unexpected_rebound[:10]}"
+            )
+
+        # Optional strong validation using the saved input_info
+        if validate_inputs:
+
+            for i in sorted(mc_id_set & rb_id_set):
+
+                entry = rebound_by_i[i]
+
+                if "input_info" not in entry.files:
+                    continue
+
+                info = entry["input_info"].item()
+
+                checks = {
+                    "stored i":
+                        int(info["i"]) == i,
+
+                    "b":
+                        np.isclose(
+                            info["b"],
+                            sampled_mc["cap_b"][i],
+                        ),
+
+                    "lambda":
+                        np.isclose(
+                            info["lambda1"],
+                            sampled_mc["cap_lambda"][i],
+                        ),
+
+                    "beta":
+                        np.isclose(
+                            info["beta"],
+                            sampled_mc["cap_beta"][i],
+                        ),
+
+                    "phi":
+                        np.isclose(
+                            info["phi"],
+                            sampled_mc["cap_phi"][i],
+                        ),
+
+                    "pos_C":
+                        np.allclose(
+                            info["pos_C"],
+                            sampled_mc["cap_C_pos"][i],
+                        ),
+
+                    "v_C":
+                        np.allclose(
+                            info["v_C"],
+                            sampled_mc["cap_C_v2"][i],
+                        ),
+
+                    "pos_B":
+                        np.allclose(
+                            info["pos_B"],
+                            sampled_mc["cap_B_pos"][i],
+                        ),
+
+                    "v_B":
+                        np.allclose(
+                            info["v_B"],
+                            sampled_mc["cap_B_v"][i],
+                        ),
+                }
+
+                failed = [
+                    name
+                    for name, ok in checks.items()
+                    if not ok
+                ]
+
+                if failed:
+                    raise ValueError(
+                        f"{v_key}: MC/REBOUND mismatch for "
+                        f"capture i={i}: {failed}"
+                    )
+
+        return rebound_by_i
+    
     def _vkey_from_vinf(self, v_inf_mps: float) -> str:
     # km/s rounded to nearest integer, prefixed with 'V'
         return f"V{int(np.rint(v_inf_mps/1e3))}"
@@ -211,11 +397,45 @@ class Analysis:
             if update:
                 print("Using cached data in results dictionary as base for update, (MC and Rebound data not relaoded).")
                 catalog = self.results_dictionary  # start with existing catalog and update derived metrics
-                for v_key in catalog['v_keys']:
-                    rebound_npz_list = self.rebound_results.get(v_key, None)
-                    masks = self._get_masks(rebound_npz_list)
+                v_keys = catalog.get('v_keys', [])  # sort by integer value after 'V'
+
+                for v_key in v_keys:
+
                     sampled_mc_results = self.sampled_mc_results.get(v_key, None) if hasattr(self, 'sampled_mc_results') else None
+
+                    rebound_npz_list = self.rebound_results.get(
+                        v_key,
+                        None,
+                    )
+
+                    if rebound_npz_list is None or len(rebound_npz_list) == 0:
+                        print(
+                            f"Warning: No Rebound data for {v_key}."
+                        )
+
+                        rebound_by_i = {}
+
+                    elif getattr(self, "validate_system_matching", True):
+
+                        rebound_by_i = self._match_rebound_to_mc(
+                            sampled_mc=sampled_mc_results,
+                            rebound_list=rebound_npz_list,
+                            v_key=v_key,
+                            validate_inputs=True,
+                        )
+
+                    else:
+                        # Pooled analysis:
+                        # original REBOUND `i` values are source-run-local and therefore
+                        # intentionally duplicated after combining independent runs.
+                        rebound_by_i = None
+
+                    masks = self._get_masks(
+                        rebound_npz_list
+                    )
+                    catalog[v_key]['rebound_by_i'] = rebound_by_i
                     catalog[v_key]['occurrences'] = self._get_occurrences(catalog[v_key]['mc'], rebound_npz_list, sampled_mc_results, masks, r)
+
                 catalog['total_occurrences_trapz'] = self._total_occurrences_trapz(catalog)
                 catalog['total_occurrences_gl'] = self._total_occurrences_gl(catalog)
                 catalog['total_pbh_neq_n'] = self._get_Neq_at_r_f(catalog, rf=r)
@@ -231,7 +451,8 @@ class Analysis:
                 else:
                     print("Computing time-averaged parameters for cached data. This may take some time...")
                     catalog = self.results_dictionary  # start with existing catalog and update derived metrics
-                    for v_key in catalog['v_keys']:
+                    v_keys = catalog.get('v_keys', [])  # sort by integer value after 'V' 
+                    for v_key in v_keys:
                         rebound_npz_list = catalog[v_key]['rebound']
                         masks = catalog[v_key]['masks']
                         sampled_mc_results = self.sampled_mc_results.get(v_key, None) if hasattr(self, 'sampled_mc_results') else None
@@ -258,13 +479,37 @@ class Analysis:
                     print(f"Warning: No MC data for {v_key}.")
                     continue
                 
-                rebound_npz_list = self.rebound_results.get(v_key, None)
-                # print(f"Combining {v_key}: MC data found, {len(rebound_npz_list)} Rebound entries found.")
-                if rebound_npz_list is None or len(rebound_npz_list) == 0:
-                    print(f"Warning: No Rebound data for {v_key}.")
+                rebound_npz_list = self.rebound_results.get(
+                    v_key,
+                    None,
+                )
 
-                masks = self._get_masks(rebound_npz_list)
-                
+                if rebound_npz_list is None or len(rebound_npz_list) == 0:
+                    print(
+                        f"Warning: No Rebound data for {v_key}."
+                    )
+
+                    rebound_by_i = {}
+
+                elif getattr(self, "validate_system_matching", True):
+
+                    rebound_by_i = self._match_rebound_to_mc(
+                        sampled_mc=sampled_mc_results,
+                        rebound_list=rebound_npz_list,
+                        v_key=v_key,
+                        validate_inputs=True,
+                    )
+
+                else:
+
+                    # Pooled analysis:
+                    # original REBOUND i values are local to each source run.
+                    rebound_by_i = None
+
+                masks = self._get_masks(
+                    rebound_npz_list
+                )
+                                
                 catalog[v_key] = {
 
                     **sampled_mc_results,  # include sampled MC metadata at top level for easy access
@@ -275,6 +520,7 @@ class Analysis:
                     # Raw data
                     "mc": mc_npz,
                     "rebound": rebound_npz_list,
+                    "rebound_by_i": rebound_by_i,
 
                     # Compute derived data per-entry
                     "termination_counts": self._get_termination_counts(rebound_npz_list),
@@ -384,6 +630,11 @@ class Analysis:
 
     def update_results_dictionary(self, r=8):
         self.results_dictionary = self.get_combined_dictionary(r, update=True)
+
+    def set_conservative_results(self, conservative=True, update=False):
+        self.conservative_results = conservative
+        if update:
+            self.update_results_dictionary()
 
     def get_rebound_results(self):
         return self.rebound_results
@@ -606,14 +857,35 @@ class Analysis:
         # capture_cross_section_completed = (frac_completed * capture_cross_section_total) if n_sampled > 0 else 0.0
         # capture_cross_section_total = ((n_completed + n_terminated) / n_sampled_captures) * capture_cross_section_total
         # ✅ OPTIMIZATION: Use numpy boolean indexing (faster than list comprehensions with zip)
-        lifetimes = [e["lifetime"] for e in rebound_list if "lifetime" in e.files] if rebound_list is not None else []
-        terminations = [1/l if l is not None else 0 for l in lifetimes]
+        lifetimes_arr = np.full(
+            len(rebound_list),
+            np.nan,
+            dtype=float,
+        )
+
+        for i, entry in enumerate(rebound_list):
+            if "lifetime" in entry.files:
+                lifetime = float(
+                    np.asarray(entry["lifetime"]).item()
+                )
+                lifetimes_arr[i] = lifetime   
+
+        terminations = [1/l if l is not None else 0 for l in lifetimes_arr]
         
         # Convert to numpy array for vectorized boolean masking
-        lifetimes_arr = np.asarray(lifetimes)
-        ejected_lifetimes = lifetimes_arr[ej_mask == 1] if len(lifetimes_arr) > 0 else np.array([])
-        collided_lifetimes = lifetimes_arr[coll_mask == 1] if len(lifetimes_arr) > 0 else np.array([])
-        terminated_lifetimes = lifetimes_arr[term_mask == 1] if len(lifetimes_arr) > 0 else np.array([])
+        valid = np.isfinite(lifetimes_arr)
+
+        ejected_lifetimes = lifetimes_arr[
+            (ej_mask == 1) & valid
+        ]
+
+        collided_lifetimes = lifetimes_arr[
+            (coll_mask == 1) & valid
+        ]
+
+        terminated_lifetimes = lifetimes_arr[
+            (term_mask == 1) & valid
+        ]
         
         # lifetimes_average = np.mean(lifetimes) if len(lifetimes) > 0 else None
         # total_rate = 1 / lifetimes_average if lifetimes_average is not None and lifetimes_average > 0 else 0.0
@@ -627,9 +899,6 @@ class Analysis:
         else:
             total_rate = 0.0
             neq_total = 0.0
-
-        total_rate = 1.0 / lifetimes_average
-        neq_total = capture_rate * lifetimes_average
 
         lifetimes_ejected_average = np.mean(ejected_lifetimes) if len(ejected_lifetimes) > 0 else None
         ejection_rate = 1 / lifetimes_ejected_average if lifetimes_ejected_average is not None and lifetimes_ejected_average > 0 else 0.0   
@@ -693,7 +962,7 @@ class Analysis:
             "terminations" : terminations,
             "dsigma_au2": sigma_au2,
             "capture_rate_array": capture_rate_array,
-            "lifetimes_array": np.array(lifetimes),
+            "lifetimes_array": np.array(lifetimes_arr),
         }
     
     
@@ -702,8 +971,7 @@ class Analysis:
         Compute aggregate occurrences across all v bins.
         Uses canonical v_inf_au_yr from catalog entries.
         """
-        v_keys = [k for k in catalog.keys() if isinstance(k, str) and k.startswith('V')]
-
+        v_keys = catalog.get('v_keys', [])  # sort by integer value after 'V'
         x_vals = [catalog[v]['v_inf_au_yr'] for v in v_keys if 'v_inf_au_yr' in catalog[v] and 'occurrences' in catalog[v]]
         total_captured = sum([catalog[v]['occurrences']["n_captured"] for v in v_keys if 'occurrences' in catalog[v]])
         y_capture_rate = [catalog[v]['occurrences']["capture_rate"] for v in v_keys if 'occurrences' in catalog[v]]
@@ -774,10 +1042,12 @@ class Analysis:
             
         x_vals = []    
         y_capture_rate = []
-        for v_key, entry in catalog.items():
+        v_keys = catalog.get("v_keys", [])
+        for v_key in v_keys:
             if not isinstance(v_key, str) or not v_key.startswith('V'):
                 continue
 
+            entry = catalog.get(v_key, {})
             occ = entry.get('occurrences')    
             x = entry.get('v_inf_au_yr')
             r_cap = occ.get('capture_rate')
@@ -810,9 +1080,10 @@ class Analysis:
         y_terminated = []
         y_termination_rate = []
 
-        for v_key, entry in catalog.items():
-            if not isinstance(v_key, str) or not v_key.startswith('V'):
-                continue
+        for v_key in v_keys:
+
+            entry = catalog[v_key]
+
             occ = entry.get('occurrences')
             if occ is None:
                 continue
@@ -892,7 +1163,7 @@ class Analysis:
 
     def _get_errors(self, catalog, percentile=0.95):
 
-        v_keys = [v for v in catalog.keys() if 'V' in v]
+        v_keys = catalog.get('v_keys', [])
         v_inf_au_yr = [catalog[v]['v_inf_au_yr'] for v in v_keys]
         Neq_std_list, Caprate_std_list, Capcrossec_std_list = [], [], []
         Neq_list, Caprate_list, Capcrossec_list = [], [], []
@@ -1130,7 +1401,7 @@ class Analysis:
             print(f"Using pre-calculated errors from catalog for percentile {percentile}.")
 
         # print(f"Error margin summary for percentile {percentile*100}% confidence interval:")
-        v_keys = [v for v in catalog.keys() if 'V' in v]
+        v_keys = catalog.get('v_keys', [])
         z_score = norm.ppf(0.5 + percentile / 2)
         # for v in v_keys:
 
@@ -1385,6 +1656,37 @@ class Analysis:
 
         return total_counts
 
+    def print_system_matching_validation(self):
+
+        if not getattr(self, "validate_system_matching", True):
+            print(
+                "System-by-system matching is not defined for this "
+                "pooled analysis because REBOUND indices are local "
+                "to the original source runs."
+            )
+            return
+        
+        for v_key in self.results_dictionary["v_keys"]:
+
+            entry = self.results_dictionary[v_key]
+
+            mc_ids = set(
+                map(int, entry["idx"])
+            )
+
+            rb_ids = set(
+                entry["rebound_by_i"].keys()
+            )
+
+            print(
+                v_key,
+                "MC sampled =", len(mc_ids),
+                "REBOUND =", len(rb_ids),
+                "matched =", len(mc_ids & rb_ids),
+                "missing =", len(mc_ids - rb_ids),
+                "extra =", len(rb_ids - mc_ids),
+            )
+
     def print_total_occurrences_summary_trapz(self):
         """User-facing summary printer based on Gauss-Legendre integration."""
         res = self.results_dictionary.get('total_occurrences_trapz', {})
@@ -1412,7 +1714,7 @@ class Analysis:
     def print_detailed_catalog_summary(self):
 
         catalog = self.results_dictionary
-        v_keys = [k for k in catalog.keys() if isinstance(k, str) and k.startswith('V')]
+        v_keys = catalog.get('v_keys', [])
 
         for k in v_keys:
             total_capture_count = catalog[k].get('n_captured', 0)
@@ -1737,6 +2039,25 @@ class Analysis:
         if v_self != v_other:
             raise ValueError(f"Velocity grids differ: {v_self ^ v_other}")
 
+        for analysis, label in [
+            (self, "self"),
+            (other, "other"),
+        ]:
+            for v in sorted(
+                analysis.mc_results.keys(),
+                key=lambda x: int(x[1:]),
+            ):
+                sampled_mc = analysis.sampled_mc_results.get(v)
+                rebound = analysis.rebound_results.get(v, [])
+
+                if sampled_mc is not None and rebound:
+                    analysis._match_rebound_to_mc(
+                        sampled_mc=sampled_mc,
+                        rebound_list=rebound,
+                        v_key=v,
+                        validate_inputs=True,
+                    )
+
         merged_mc_results = {}
 
         for v in sorted(v_self, key=lambda x: int(x[1:])):
@@ -1754,7 +2075,7 @@ class Analysis:
 
         self.mc_results = merged_mc_results
         self.rebound_results = merged_rebound_results
-
+        self.validate_system_matching = False
         # Very important: do not downsample back to only 1000 captures.
         # Use all merged captured systems.
         self.mc_sample_size = 10**18
@@ -1763,6 +2084,7 @@ class Analysis:
         self.results_dictionary = self.get_combined_dictionary(use_cached_data=False)
 
         return self
+    
     def _get_metric_from_sources(self, analysis_dict, v_key, metric_name):
         """Search for metric in multiple sources."""
         sp = analysis_dict
@@ -2073,24 +2395,43 @@ class Analysis:
             flag = self._as_scalar(entry["termination_flag"])
 
             # Physical termination
-            if isinstance(flag, str) and (
-                "escape_C" in flag
-                or "collision" in flag
-            ):
-                times.append(lifetime)
-                events.append(1)
+            if self.conservative_results is False:
+                if isinstance(flag, str) and (
+                    "escape_C" in flag
+                    or "collision" in flag
+                ):
+                    times.append(lifetime)
+                    events.append(1)
 
-            # Survived until end of integration
-            elif isinstance(flag, str) and (
-                "completed" in flag
-                or "time_exceeded" in flag
-            ):
-                times.append(lifetime)
-                events.append(0)
-
-            # Numerical failures should not enter survival analysis
+                # Survived until end of integration
+                elif isinstance(flag, str) and (
+                    "completed" in flag
+                    or "time_exceeded" in flag
+                ):
+                    times.append(lifetime)
+                    events.append(0)
+                # Numerical failures should not enter survival analysis
+                else:
+                    continue
             else:
-                continue
+                if isinstance(flag, str) and (
+                    "escape_C" in flag
+                    or "collision" in flag
+                    or "time_exceeded" in flag
+                ):
+                    times.append(lifetime)
+                    events.append(1)
+
+                # Survived until end of integration
+                elif isinstance(flag, str) and (
+                    "completed" in flag
+                    
+                ):
+                    times.append(lifetime)
+                    events.append(0)
+                # Numerical failures should not enter survival analysis
+                else:
+                    continue
 
         return (
             np.asarray(times, dtype=float),
