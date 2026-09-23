@@ -127,7 +127,7 @@ class PBHPopulation:
             sampled_mc = analysis.get_sampled_mc_results()
             self.population_dict[name]['sampled_mc'] = sampled_mc
 
-    def analyze_population(self, r=8, time_averages=False, load='All', update=False, use_cached_data=True):
+    def analyze_population(self, r=8, time_averages=False, load='All', update=False, use_cached_data=True, conservative_results=True, print_validation=False):
         """
         Analyze the entire population of PBHs after all simulations are complete.
 
@@ -140,9 +140,13 @@ class PBHPopulation:
             configuration = p['configuration']
             name = p['name']
             print(f"Analyzing final results for configuration: {name}")
-            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=True, load=load)
+            analysis = anl.Analysis(name=configuration.name, configuration=configuration, load_rebound=True, load=load, conservative_results=conservative_results)
             analysis_results = analysis.get_combined_dictionary(r, time_averages, update, use_cached_data)
             self.population_dict[name]['analysis'] = analysis
             self.population_dict[name]['analysis_results'] = analysis_results
+
+            if print_validation:
+                print(f"Validation for configuration: {name}")
+                analysis.print_system_matching_validation()
 
 
