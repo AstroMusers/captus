@@ -1,13 +1,32 @@
 import numpy as np
-
 from captus.three_body_capture.analysis.analysis import Analysis
 
 
+# ...existing code...
+import numpy as np
+from types import SimpleNamespace
+from captus.three_body_capture.analysis.analysis import Analysis
+
+class FakeNPZ:
+    """Minimal np.load(...)-like object used by Analysis (has .files and __getitem__)."""
+    def __init__(self, mapping):
+        # store arrays so .item()/np.asarray(...) works like real NpzFile
+        self._d = {k: (np.array(v) if not isinstance(v, np.ndarray) else v) for k, v in mapping.items()}
+        self.files = list(self._d.keys())
+
+    def __getitem__(self, key):
+        return self._d[key]
+
+    def keys(self):
+        return self.files
+
 def _make_analysis():
+    # construct minimal Analysis instance without running __init__
     analysis = Analysis.__new__(Analysis)
     analysis.name = "demo"
     analysis.system_param_dict = {"seed_base": 1, "mA": 1.0, "mB": 2.0, "mC": 3.0, "aB": 4.0}
     analysis.simulation_param_dict = {"sample_size": 1, "importance_sampling": False, "trials": 1, "vDM": 1.0}
+    # mc_results can be plain dict-like for this test
     analysis.mc_results = {"V1": {"v_inf": np.array(1000.0)}}
     analysis.sampled_mc_results = {
         "V1": {
@@ -19,11 +38,16 @@ def _make_analysis():
             "cap_bmax": np.array([1.5]),
             "checks": np.array([1, 0, 1, 0, 0, 0, 0, 1]),
             "epsilon": 0.1,
+            "v_inf": np.array(1000.0),
         }
     }
-    analysis.rebound_results = {"V1": [object()]}
+
+    # Use FakeNPZ to emulate npz files (provides .files and indexing)
+    analysis.rebound_results = {"V1": [FakeNPZ({"i": np.array([0])})]}
     analysis.results_dictionary = {"stale": True}
     return analysis
+
+# ...existing tests...
 
 
 def test_get_combined_dictionary_recomputes_when_cache_disabled(monkeypatch):
