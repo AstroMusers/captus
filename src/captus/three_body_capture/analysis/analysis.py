@@ -30,6 +30,7 @@ class Analysis:
         self.load_rebound = load_rebound
         self.conservative_results = conservative_results
         self.validate_system_matching = True
+        self.do_bootstrap = True
 
         if self.load != 'All':
             self.mc_sample_size = min(self.mc_sample_size, self.load)
@@ -630,6 +631,9 @@ class Analysis:
 
     def update_results_dictionary(self, r=8):
         self.results_dictionary = self.get_combined_dictionary(r, update=True)
+
+    def set_bootstrap(self, do_bootstrap=True):
+        self.do_bootstrap = do_bootstrap
 
     def set_conservative_results(self, conservative=True, update=False):
         self.conservative_results = conservative
@@ -2459,6 +2463,14 @@ class Analysis:
             kmf,
             t=self.tau_max,
         )
+
+        if not self.do_bootstrap:
+            bootstrap_dict = {
+                "mean": np.nan,
+                "se": np.nan,
+                "ci95": (np.nan, np.nan),
+            }
+            return mean_lifetime, bootstrap_dict
 
         bootstrap_dict = calc.bootstrap_rmst(
             times,
