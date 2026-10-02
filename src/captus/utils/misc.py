@@ -517,6 +517,7 @@ def get_shell_sum_Neq_and_params(analysis, r_edges, M_star=1.0, fraction=1.0, sa
             # Create fresh list for each radius to avoid accumulation
             a_list = list(analysis) if not isinstance(analysis, list) else analysis.copy()
             for a in a_list:
+                a.set_bootstrap(False)
                 a.update_results_dictionary(r_mid)
 
         N_eq_full = []
@@ -753,7 +754,7 @@ def create_r_k_table(
 
                 value = float(value) * metric["scale"]
                 error = float(error) * metric["scale"] * sigma
-
+                print(value, error, metric["decimals"], metric["scientific"])
                 formatted = _format_pm(
                     value,
                     error,
