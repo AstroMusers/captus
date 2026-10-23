@@ -6,6 +6,7 @@ import os
 from matplotlib import rcParams
 import matplotlib as mpl
 from matplotlib.font_manager import FontProperties
+from tdpy.plotting import apply_plot_theme, configure_plot_style, plot_style
 
 save_directory = os.path.join(os.path.dirname(__file__), '../../results/plots/GW_Capture/')
 os.makedirs(save_directory, exist_ok=True)
@@ -18,10 +19,19 @@ cmap = mpl.colormaps['plasma']
 # Take colors at regular intervals spanning the colormap.
 colors = cmap(np.linspace(0, 1, n_lines))
 
-def plot_capture_cross_section(m_pbh_values_in_Msun, v_inf_values_kms, cross_section_grid, star, r):
+def _save_plot(path):
+    figure = apply_plot_theme(plt.gcf())
+    print(f'Writing to {path}...')
+    plt.savefig(path, bbox_inches='tight', facecolor=figure.get_facecolor())
+
+
+@plot_style()
+def plot_capture_cross_section(m_pbh_values_in_Msun, v_inf_values_kms, cross_section_grid, star, r, typeplotback=None):
     """
     Plot the capture cross-section grid for a given star and radius.
     """
+    if typeplotback is not None:
+        configure_plot_style(typeplotback)
     vmin = float(cross_section_grid[cross_section_grid > 0].min())
     vmax = float(cross_section_grid.max())
 
@@ -49,12 +59,15 @@ def plot_capture_cross_section(m_pbh_values_in_Msun, v_inf_values_kms, cross_sec
     plt.title(f'Capture Cross-Section at r={r} kpc')
     # plt.legend()
     plt.tight_layout()
-    plt.savefig(save_directory + f'{star}_crosssection_{r}kpc.png', bbox_inches='tight')
+    _save_plot(save_directory + f'{star}_crosssection_{r}kpc.png')
 
-def plot_n_eqs(m_pbh_values_in_Msun, v_inf_values_kms, n_eqs_grid, star, r):
+@plot_style()
+def plot_n_eqs(m_pbh_values_in_Msun, v_inf_values_kms, n_eqs_grid, star, r, typeplotback=None):
     """
     Plot the N_eq grid for a given star and radius.
     """
+    if typeplotback is not None:
+        configure_plot_style(typeplotback)
     n_eqs_grid = np.ma.masked_invalid(n_eqs_grid)
     n_eqs_grid = np.ma.masked_less_equal(n_eqs_grid, 0.0)
     vmin = float(n_eqs_grid.min())
@@ -87,12 +100,15 @@ def plot_n_eqs(m_pbh_values_in_Msun, v_inf_values_kms, n_eqs_grid, star, r):
     plt.title(f'N_eq at r={r} kpc')
     # plt.legend()
     plt.tight_layout()
-    plt.savefig(save_directory + f'{star}_neq_{r}kpc.png', bbox_inches='tight')
+    _save_plot(save_directory + f'{star}_neq_{r}kpc.png')
 
-def plot_coalescence_time(m_pbh_values_in_Msun, v_inf_values_kms, coalescence_grid, star, r):
+@plot_style()
+def plot_coalescence_time(m_pbh_values_in_Msun, v_inf_values_kms, coalescence_grid, star, r, typeplotback=None):
     """
     Plot the coalescence time grid for a given star and radius.
     """
+    if typeplotback is not None:
+        configure_plot_style(typeplotback)
     coal_grid = np.where(coalescence_grid == 0, np.nan, coalescence_grid)
     coal_plot = np.ma.masked_invalid(coal_grid)
     coal_plot = np.ma.masked_less_equal(coal_plot, 0.0)
@@ -129,12 +145,15 @@ def plot_coalescence_time(m_pbh_values_in_Msun, v_inf_values_kms, coalescence_gr
     plt.title(f'Coalescence Time at r={r} kpc')
     # plt.legend()
     plt.tight_layout()
-    plt.savefig(save_directory + f'{star}_coalescence_time_{r}kpc.png', bbox_inches='tight')
+    _save_plot(save_directory + f'{star}_coalescence_time_{r}kpc.png')
 
-def plot_all_grids(m_pbh_values_in_Msun, v_inf_values_kms, cross_section_grid, n_eqs_grid, coalescence_grid, star, r):
+@plot_style()
+def plot_all_grids(m_pbh_values_in_Msun, v_inf_values_kms, cross_section_grid, n_eqs_grid, coalescence_grid, star, r, typeplotback=None):
     """
     Plot all the grids for a given star and radius.
     """
+    if typeplotback is not None:
+        configure_plot_style(typeplotback)
 
     coal_grid = np.where(cross_section_grid == 0, np.nan, coalescence_grid)
     coal_plot = np.ma.masked_invalid(coal_grid)
@@ -234,4 +253,4 @@ def plot_all_grids(m_pbh_values_in_Msun, v_inf_values_kms, cross_section_grid, n
 
 
     fig.subplots_adjust(hspace=0.08)
-    plt.savefig(save_directory + f'{star}_crosssection_coal_dneq_{r}kpc.png', bbox_inches='tight')
+    _save_plot(save_directory + f'{star}_crosssection_coal_dneq_{r}kpc.png')

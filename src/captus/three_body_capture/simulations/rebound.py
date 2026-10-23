@@ -112,17 +112,6 @@ class OrbitalSimulation:
        
         op.fig.clf()
 
-    # def _track_preprocess_errors(self, error):
-    #     if self.error_list is None:
-    #         self.error_list = []
-    #     self.error_list.append(error)
-
-    # def get_error_list(self):
-    #     if self.error_list:
-    #         return self.error_list
-    #     else:
-    #         return []
-
     def _print_script_version(self):
         version = get_script_version()
         print(f"Running Rebound_v3.py, last modified on {version}")
@@ -208,39 +197,15 @@ class OrbitalSimulation:
         #     f't_end: {t_end}, t_min: {t_min}, t_max_execution: {t_max_execution}, orbital period C: {P_C}, orbital period B: {P_B}, '
         #     ')
 
-        # try:
         if not np.isfinite(P_C) or P_C <= 0:
             error_list.append('invalid orbital period C')
-            # self._track_preprocess_errors('invalid orbital period C')
-            # flag = 'preprocessing_error'
-            # result = [i, v_inf, start_info, error_list, start_separation, sim.t, E_c_cond, flag, eccentricities, semi_major_axes, times]
-            # self._save_result(v_inf_kms, result)
-            # raise exc.InvalidPeriodError(f"Invalid orbital period for C: {P_C}")
 
         if not np.isfinite(P_B) or P_B <= 0:
             error_list.append('invalid orbital period B')
 
-            # self._track_preprocess_errors('invalid orbital period B')
-            # flag = 'preprocessing_error'
-            # result = [i, v_inf, start_info, error_list, start_separation, sim.t, None, None, None, None, None]
-            # self._save_result(v_inf_kms, result)
-            # raise exc.InvalidPeriodError(f"Invalid orbital period for B: {P_B}")
-
         if not np.isfinite(sim.dt) or sim.dt <= 0:
-            # self._track_preprocess_errors('invalid time step')
             error_list.append('invalid time step')
-
-            # flag = 'preprocessing_error'
-            # result = [i, v_inf, start_info, error_list, start_separation, sim.t, None, None, None, None, None]
-            # self._save_result(v_inf_kms, result)
-            # raise exc.InvalidTimeStepError(f"Invalid time step: {sim.dt}")
         
-        # except (exc.InvalidPeriodError, exc.InvalidTimeStepError) as e:
-        #     # print(f"Error during pre-integration checks: {e}, Simulation failed for system {i}. Script continues...")
-        #     pass
-        #     # return
-
-
         counter = 0
         booster = 10
         plot_counter = 0

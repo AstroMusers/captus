@@ -1,9 +1,9 @@
 import multiprocessing
-from typing import Any, Iterable
+from typing import Any
 import time
-import datetime
 
 from numpy.random import Generator, PCG64, SeedSequence
+from captus.utils.misc import format_duration
 
 import captus.three_body_capture.simulations.montecarlo as MCi
 
@@ -75,24 +75,17 @@ class ThreeBodyCapture:
             num_cores = multiprocessing.cpu_count()
 
         total_to_run = len(tasks)
+        processes = min(num_cores, total_to_run)
         print(f"\n{'='*70}")
         print(f"Running {total_to_run} Monte Carlo simulations")
-        print(f"Using {num_cores} cores")
+        print(f"Using {processes} cores")
         print(f"{'='*70}\n")
-
-        # Helper to format seconds to H:MM:SS
-        def _fmt(sec):
-            sec = int(sec)
-            m, s = divmod(sec, 60)
-            h, m = divmod(m, 60)
-            return f"{h:d}:{m:02d}:{s:02d}"
 
         results = []
         completed = 0
-        processes = min(num_cores, total_to_run)
         chunksize = 1
 
-        with multiprocessing.Pool(processes=num_cores) as pool:
+        with multiprocessing.Pool(processes=processes) as pool:
             try:
                 for res in pool.imap_unordered(_mc_worker, tasks, chunksize=chunksize):
                     results.append(res)
@@ -105,7 +98,8 @@ class ThreeBodyCapture:
 
                     print(
                         f"\rProgress: {completed}/{total_to_run} ({pct:.1f}%), "
-                        f"elapsed {_fmt(elapsed_sec)}, estimated remaining time: {_fmt(remaining_sec)}",
+                        f"elapsed {format_duration(elapsed_sec)}, "
+                        f"estimated remaining time: {format_duration(remaining_sec)}",
                         end='', flush=True,
                     )
 

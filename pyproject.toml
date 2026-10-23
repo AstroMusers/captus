@@ -14,7 +14,6 @@ license = { file = "LICENSE" }
 
 keywords = ["astrophysics", "three body capture", "rebound"]
 
-# Core runtime dependencies (from requirements.txt, excluding pytest)
 requires-python = ">=3.10"
 
 dependencies = [
@@ -27,13 +26,11 @@ dependencies = [
     "PyYAML",
     "pytextable",
     "seaborn",
-    "corner",
+    "tdpy",
 ]
 
-# If you need to depend on REBOUND from GitHub, prefer documenting installation steps
-# or using optional-dependencies with an extra that users can opt into.
-# Hatchling does not resolve VCS URLs in dependencies for PyPI publishing best practices.
-# You can still `pip install git+https://github.com/hannorein/rebound.git` separately.
+[project.scripts]
+captus-binary-capture = "captus.three_body_capture.planetary_binary:main"
 
 [project.optional-dependencies]
 dev = [
@@ -41,10 +38,11 @@ dev = [
     "build",
 ]
 
-# Developer convenience: install rebound directly from the repo
-# (uses subdirectory install). This should not be used for PyPI releases.
-rebound = [
-  "rebound @ git+https://github.com/hannorein/rebound.git"
+plotting = ["corner"]
+
+inference = [
+  "pcat @ git+https://github.com/tansudaylan/pcat.git",
+  "MulensModel>=3.12.0",
 ]
 
 [tool.hatch.build.targets.wheel]

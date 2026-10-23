@@ -7,6 +7,7 @@ import numpy as np
 from numpy.random import Generator, PCG64, SeedSequence
 
 from captus.three_body_capture.simulations.rebound import OrbitalSimulation
+from captus.utils.misc import format_duration
 
 
 def check_result_exists(configuration, v_inf_kms, i, seed):
@@ -106,13 +107,6 @@ class ThreeBodyEvolution:
             self.results = []
             return self.results
 
-        # Helper to format seconds to H:MM:SS
-        def _fmt(sec):
-            sec = int(sec)
-            m, s = divmod(sec, 60)
-            h, m = divmod(m, 60)
-            return f"{h:d}:{m:02d}:{s:02d}"
-
         results = []
         completed = 0
         processes = min(num_cores, total_to_run)
@@ -131,7 +125,8 @@ class ThreeBodyEvolution:
 
                     print(
                         f"\rProgress: {completed}/{total_to_run} ({pct:.1f}%), "
-                        f"elapsed {_fmt(elapsed_sec)}, estimated remaining time {_fmt(remaining_sec)}",
+                        f"elapsed {format_duration(elapsed_sec)}, "
+                        f"estimated remaining time {format_duration(remaining_sec)}",
                         end='', flush=True,
                     )
 

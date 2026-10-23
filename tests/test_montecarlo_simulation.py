@@ -1,7 +1,76 @@
 import numpy as np
+import pytest
+from astropy import units as u
 
 import captus.three_body_capture.simulations.montecarlo as mc_mod
 from captus.three_body_capture.simulations.montecarlo import MonteCarloSimulation
+from captus.utils import calculations as calc
+
+
+@pytest.mark.parametrize("angle", [0.0, np.pi / 2.0, -0.7, 2.0 * np.pi + 0.4])
+def test_rodrigues_rotation_preserves_axis_angle_convention(angle):
+    vector = np.array([2.0, -1.0, 4.0])
+    axis = np.array([1.0, 2.0, -3.0])
+    direction = axis / np.linalg.norm(axis)
+    expected = (vector * np.cos(angle) + np.cross(direction, vector) * np.sin(angle)
+                + direction * np.dot(direction, vector) * (1.0 - np.cos(angle)))
+    actual = calc.rodrigues_rotate(vector, axis, angle)
+    np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-14)
+    np.testing.assert_allclose(np.linalg.norm(actual), np.linalg.norm(vector), rtol=1e-14)
+    np.testing.assert_array_equal(vector, [2.0, -1.0, 4.0])
+    np.testing.assert_array_equal(axis, [1.0, 2.0, -3.0])
+
+
+def test_rodrigues_rotation_retains_zero_axis_rejection():
+    with pytest.raises(ValueError, match="Zero vector"):
+        calc.rodrigues_rotate([1.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.5)
+
+
+def test_area_uniform_monte_carlo_cross_section_estimator():
+    assert calc.annular_cross_section(1.0, 3.0) == pytest.approx(8.0 * np.pi)
+    area = calc.annular_cross_section(1.0 * u.m, 0.003 * u.km)
+    assert area.to_value(u.m**2) == pytest.approx(8.0 * np.pi)
+    contribution, total = calc.capture_cross_section(b_mins=0.0, b_maxs=2e11, b_cap=1e11, n_sampled=10)
+    expected = np.pi * (2e11 * u.m).to_value(u.au)**2 / 10.0
+    assert contribution.isscalar
+    assert contribution.to_value(u.au**2) == pytest.approx(expected)
+    assert total.to_value(u.au**2) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("confidence, z_score", [(0.68, 1.0), (0.95, 1.96), (0.9, None)])
+def test_capture_estimate_and_error_preserve_trajectory_weights(confidence, z_score):
+    from scipy.stats import norm
+
+    minimum = np.array([0.2, 0.4, 0.6]) * 1e11  # [m]
+    maximum = np.array([1.2, 1.7, 2.1]) * 1e11  # [m]
+    captured = np.array([0.7, 0.9, 1.5]) * 1e11  # [m]
+    sample_count = 20
+    minimum_au = (minimum * u.m).to_value(u.au)  # [au]
+    maximum_au = (maximum * u.m).to_value(u.au)  # [au]
+    captured_au = (captured * u.m).to_value(u.au)  # [au]
+    weights = np.pi * (maximum_au**2 - minimum_au**2)  # [au^2]
+    expected = np.sum(weights) / sample_count  # [au^2]
+    expected_error = np.sqrt((np.sum(weights**2) - np.sum(weights)**2 / sample_count)
+                             / (sample_count * (sample_count - 1)))  # [au^2]
+    contributions, total = calc.capture_cross_section(minimum, maximum, captured, sample_count)
+    estimate, error, interval = calc.capture_cross_section_and_error(
+        captured, minimum, maximum, sample_count, conf=confidence,
+    )
+    np.testing.assert_array_equal(contributions.to_value(u.au**2), weights / sample_count)
+    assert total.to_value(u.au**2) == pytest.approx(expected, rel=1e-14)
+    assert estimate == pytest.approx(expected, rel=1e-14)
+    assert error == pytest.approx(expected_error, rel=1e-14)
+    if z_score is None:
+        z_score = norm.ppf(0.5 + confidence / 2.0)
+    np.testing.assert_allclose(interval, [expected - z_score * expected_error, expected + z_score * expected_error], rtol=1e-14)
+
+
+def test_capture_estimate_retains_empty_capture_result():
+    contributions, total = calc.capture_cross_section([], [], [], 10)
+    estimate, error, interval = calc.capture_cross_section_and_error([], [], [], 10)
+    assert contributions.shape == (0,)
+    assert total.to_value(u.au**2) == estimate == error == 0.0
+    assert interval == (0.0, 0.0)
 
 
 class DummyConfiguration:

@@ -11,9 +11,9 @@ system_param_dict:
   epsilon: 0.11626902801921635  # float
   seed_base: 42                 # int
 v_inf_grid_params: 
-  min: 1000                     # int -> float later if you need
-  max: 544000
-  n: 20
+  min_v: 1000                   # [m/s]
+  max_v: 544000                 # [m/s]
+  n_v: 20
 simulation_param_dict:
   trials: 10000000        # int
   max_trials: 1000000000   # int

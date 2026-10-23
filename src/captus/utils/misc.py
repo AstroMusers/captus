@@ -4,14 +4,21 @@ import numpy as np
 import astropy.constants as const
 import pandas as pd
 import captus.utils.calculations as calc
+from captus.utils.formatting import sci_notation_latex
+from captus.paths import get_repository_path
+
+
+def format_duration(seconds: float) -> str:
+    """Format elapsed seconds as an unbounded-hours ``H:MM:SS`` string."""
+
+    total_seconds = int(seconds)  # [s]
+    total_minutes, seconds_part = divmod(total_seconds, 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours:d}:{minutes:02d}:{seconds_part:02d}"
+
+
 def _resolve_repo_root() -> str:
-    # Optional override for admins/users
-    env_root = os.getenv("CAPTUS_REPO_ROOT")
-    if env_root:
-        return os.path.abspath(env_root)
-    else:
-        REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    return REPO_ROOT
+    return str(get_repository_path())
     
 def create_analysis_latex_table(analysis_list, rows, row_labels, ci_lists=None, unit_change=None, fmt='.6f', cols_labels=None, filename=None):
     """
@@ -23,20 +30,6 @@ def create_analysis_latex_table(analysis_list, rows, row_labels, ci_lists=None, 
     - cols_labels: list of labels for the columns
     - filename: output .tex file path
     """
-    def sci_notation_latex(x, pos=None):
-        """Format a number as 2.3 × 10^4 for axis labels (LaTeX style)."""
-        if x == 0:
-            return "0"
-        else:
-            exponent = int(np.floor(np.log10(abs(x))))
-            coeff = x / 10**exponent
-            # Use LaTeX formatting for matplotlib
-            if ((coeff - 1.00) < 1e-3):
-                return r"10$^{{{}}}$".format(exponent)
-            # elif (coeff - 10.00) < 1e-3:
-            #     return r"10$^{{{}}}$".format(exponent + 1)
-            else:
-                return r"${:.1f} \times 10^{{{}}}$".format(coeff, exponent)
     if cols_labels is None:
         cols_labels_list = []
         for l in analysis_list:
@@ -298,86 +291,6 @@ def get_MW_params(r=8.0):
     return dictionary
 
 
-# def get_integrated_Neq_and_params(analysis, r_array, dr, M_star=1.0, fraction=1.0, save=False):
-    
-#     """Calculate integrated N_eq for a range of radii and return a dictionary of results.
-    
-#     Parameters
-#     ----------
-#     analysis : Analysis object or tuple of Analysis objects
-#         The analysis or analyses to use for calculating N_eq.
-#     r_array : array-like
-#         Array of radii at which to calculate N_eq.
-#     M_star : float, optional
-#         Average stellar mass to use in N_eq calculation (default is 1.0).
-#     fraction : float, optional
-#         Fraction of stars to consider in N_eq calculation (default is 1.0).
-#     Returns
-#     -------
-#     dict
-#         A dictionary containing the integrated N_eq values and corresponding parameters for each radius.
-#     """
-#     all_results = {}
-#     for r in r_array:
-#         r_dict = {}
-#         a_list = []
-#         if isinstance(analysis, tuple):
-#             for a1, a2 in zip(analysis[0], analysis[1]):
-#                 combined = a1.merged_copy_for_error_analysis(a2)
-#                 combined.update_results_dictionary(r)
-#                 a_list.append(combined)
-#         else:
-#             analysis.update_results_dictionary(r)
-#             a_list.append(analysis)
-
-#         N_eq_full = []
-#         Neq_pbh_bound = []
-#         for a in a_list:
-#             N_eq_full.append(a.results_dictionary['total_pbh_neq_n']['Neq_pbh_f_full'])
-#             Neq_pbh_bound.append(a.results_dictionary['total_pbh_neq_n']['Neq_pbh_f_bound'])
-
-#         N_stars_at_r = calc.star_number_at_r(r, dr, M_star=M_star)
-#         N_alike_systems_at_r = calc.star_number_at_r(r, dr, M_star=M_star, fraction=fraction)
-
-#         N_eq_full_stars = N_eq_full[0] * N_stars_at_r
-#         Neq_pbh_bound_stars = Neq_pbh_bound[0] * N_stars_at_r
-
-#         N_eq_full_alike = N_eq_full[0] * N_alike_systems_at_r
-#         Neq_pbh_bound_alike = Neq_pbh_bound[0] * N_alike_systems_at_r
-
-#         r_dict['N_eq_full'] = N_eq_full
-#         r_dict['N_eq_pbh_bound'] = Neq_pbh_bound
-#         r_dict['N_stars_at_r'] = N_stars_at_r
-#         r_dict['N_alike_systems_at_r'] = N_alike_systems_at_r
-#         r_dict['N_eq_full_stars'] = N_eq_full_stars
-#         r_dict['N_eq_pbh_bound_stars'] = Neq_pbh_bound_stars
-#         r_dict['N_eq_full_alike'] = N_eq_full_alike
-#         r_dict['N_eq_pbh_bound_alike'] = Neq_pbh_bound_alike
-
-#         all_results[r] = r_dict
-#         print(f"Calculated N_eq values for r={r} kpc: N_eq_full={N_eq_full}, Neq_pbh_bound={Neq_pbh_bound}, N_stars_at_r={N_stars_at_r}, N_alike_systems_at_r={N_alike_systems_at_r}")
-    
-#     # Now integrate N_eq over radius
-#     integrated_results = {}
-#     N_eq_full_stars_integrated = calc.integrate_gauss_legendre(r_array, [all_results[r]['N_eq_full_stars'] for r in r_array])
-#     Neq_pbh_bound_stars_integrated = calc.integrate_gauss_legendre(r_array, [all_results[r]['N_eq_pbh_bound_stars'] for r in r_array])
-#     N_eq_full_alike_integrated = calc.integrate_gauss_legendre(r_array, [all_results[r]['N_eq_full_alike'] for r in r_array])
-#     Neq_pbh_bound_alike_integrated = calc.integrate_gauss_legendre(r_array, [all_results[r]['N_eq_pbh_bound_alike'] for r in r_array])
-#     integrated_results['N_eq_full_stars_integrated'] = N_eq_full_stars_integrated
-#     integrated_results['Neq_pbh_bound_stars_integrated'] = Neq_pbh_bound_stars_integrated
-#     integrated_results['N_eq_full_alike_integrated'] = N_eq_full_alike_integrated
-#     integrated_results['Neq_pbh_bound_alike_integrated'] = Neq_pbh_bound_alike_integrated
-
-
-#     # Save the dictionary as a dataframe 
-#     if save:
-#         import pickle
-
-#         data = {'all_results': all_results, 'integrated_results': integrated_results}
-#         with open('integrated_neq_results.pkl', 'wb') as f:
-#             pickle.dump(data, f)
-
-#     return all_results, integrated_results
 def get_integrated_Neq_and_params(analysis, r_array, dr, M_star=1.0, fraction=1.0, save=False):
     
     """Calculate integrated N_eq for a range of radii and return a dictionary of results.

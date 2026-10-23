@@ -3,7 +3,12 @@ from scipy.optimize import brentq
 import captus.utils.misc as misc
 from astropy import constants as const
 import astropy.units as u
-from captus.utils.calculations import v_pbh_pdf, get_Neq_at_r_f, integrate_gauss_legendre
+from captus.utils.calculations import (
+    get_Neq_at_r_f,
+    integrate_gauss_legendre,
+    orbital_period as _orbital_period_si,
+    v_pbh_pdf,
+)
 
 G = const.G.value
 def galactic_dm_maxwell_dist(v, r=8):
@@ -60,7 +65,8 @@ def r_minimum(M_star, M_pbh, v_inf, e):
     return G * (M_star + M_pbh) * (e-1) / (v_inf**2)
 
 def b_minimum(M_star, M_pbh, R_star, v_inf):
-    return np.sqrt(R_star**2 + (2 * G *(M_star + M_pbh) * R_star) / v_inf**2)
+    R_collision = R_star + (2 * G * M_pbh / const.c.value**2)
+    return np.sqrt(R_collision**2 + (2 * G * (M_star + M_pbh) * R_collision) / v_inf**2)
 
 def p_e(e):
     return ((e + 1)**-3.5) * ((np.arccos(-1/e) * (24 + 73*e**2 + ((37/4)*e**4))) + (602 + 673*e**2) * np.sqrt(e**2 - 1)/12)
@@ -158,21 +164,12 @@ def compute_semimajor_axis(b_ave, M_pbh, M_star, v_inf):
     return a, e
 
 def orbital_period(m1, m2, semimajax):
-    # G =  39.4769264 # gravitational constant in AU^3 / (year^2 x Msun) 
-    # M = (np.asarray(m1) + np.asarray(m2))
-    # A = np.asarray(semimajax)
-    # orbitalPeriod = (np.sqrt((4 * np.pi**2 * A**3)) / np.sqrt(G * M)) * 365.25
-    G = const.G # units of m^3 kg^-1 s^-2
-    # m1 = m1 * const.M_sun # units of kg
-    m1 = m1*(u.kg)
-    # m2 = m2 * const.M_sun # units of kg
-    m2 = m2*(u.kg)
-    A = semimajax * u.au # units of m
-    A = A.to(u.m)
-    orbitalPeriod = (np.sqrt((4 * np.pi**2 * A**3)) / np.sqrt(G * (m1 + m2))) # units of s
-    orbitalPeriod = orbitalPeriod.to(u.yr).value
-    # print('max orbital period in hours:', np.max(orbitalPeriod))
-    # orbitalPeriod = orbitalPeriod / 24 # units of days
-    # print('max orbital period in days:', np.max(orbitalPeriod))
+    """Return Keplerian periods in years for SI masses and semimajor axes in AU."""
 
-    return orbitalPeriod
+    semimajor_axis_m = (np.asarray(semimajax) * u.au).to_value(u.m)
+    period_seconds = _orbital_period_si(
+        semimajor_axis_m,
+        np.asarray(m1),
+        np.asarray(m2),
+    )
+    return (period_seconds * u.s).to_value(u.yr)

@@ -9,7 +9,6 @@ import captus.utils.misc as misc
 import pandas as pd
 import scipy.stats as stats
 from pathlib import Path
-import importlib.util
 from scipy.stats import norm
 import copy
 import pickle
@@ -1542,30 +1541,6 @@ class Analysis:
         -------
         dict : Contains 'mC_Msun' and bound values 'bound_{bound_id}' for each constraint
         """
-        def load_pbhbounds_tools(pbhbounds_path):
-            pbhbounds_path = Path(pbhbounds_path)
-            tools_path = pbhbounds_path / "tools.py"
-
-            if not tools_path.exists():
-                raise FileNotFoundError(
-                    f"PBHbounds tools.py not found at: {tools_path}"
-                )
-
-            spec = importlib.util.spec_from_file_location(
-                "pbhbounds_tools",
-                tools_path,
-            )
-
-            if spec is None or spec.loader is None:
-                raise ImportError(
-                    f"Could not create import spec for {tools_path}"
-                )
-
-            tools = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(tools)
-
-            return tools
-
         # Get the PBHbounds path from the environment variable
         pbhbounds_path = os.environ.get("PBHBOUNDS_PATH")
 
@@ -1575,58 +1550,15 @@ class Analysis:
                 "or set the PBHBOUNDS_PATH environment variable."
             )
         # Load PBHbounds tools module
-        tools = load_pbhbounds_tools(pbhbounds_path)
+        tools = calc._load_pbhbounds_tools(pbhbounds_path)
         
         # Convert mC from kg to solar masses
         mC_kg = catalog.get('mC')
         if mC_kg is None:
             raise ValueError("catalog must contain 'mC' key with mass in kg")
-        
-        mC_Msun = (mC_kg * u.kg).to(u.M_sun).value
-        
-        # Ensure bound_id is a list
-        if isinstance(bound_id, str):
-            bound_ids = [bound_id]
-        else:
-            bound_ids = list(bound_id)
-        
-        result = {'mC_kg': mC_kg, 'mC_Msun': mC_Msun}
-        bounds_values = []
-        
-        for bid in bound_ids:
-            try:
-                # Load bound data from PlotPBHbounds
-                m_arr, f_arr = tools.load_bound(bid)
-                
-                # Interpolate to find f at mC_Msun
-                # Handle case where mC is outside the bounds
-                if mC_Msun < m_arr.min() or mC_Msun > m_arr.max():
-                    f_at_mC = np.nan  # Out of range
-                    status = "out_of_range"
-                else:
-                    # Use log-log interpolation for better accuracy
-                    f_at_mC = np.interp(np.log10(mC_Msun), np.log10(m_arr), np.log10(f_arr), left=np.nan, right=np.nan)
-                    f_at_mC = 10**f_at_mC if not np.isnan(f_at_mC) else np.nan
-                    status = "valid"
-                
-                result[f'bound_{bid}'] = f_at_mC
-                result[f'status_{bid}'] = status
-                bounds_values.append(f_at_mC)
-                
-            except Exception as e:
-                print(f"Warning: Could not load bound '{bid}': {e}")
-                result[f'bound_{bid}'] = np.nan
-                result[f'status_{bid}'] = "error"
-        
-        # If multiple bounds and not returning all, compute summary statistics
-        if len(bounds_values) > 1 and not return_all_bounds:
-            valid_bounds = [b for b in bounds_values if not np.isnan(b)]
-            if valid_bounds:
-                result['min_fraction'] = np.min(valid_bounds)
-                result['max_fraction'] = np.max(valid_bounds)
-                result['mean_fraction'] = np.mean(valid_bounds)
-        
-        return result
+        return calc._evaluate_pbh_fraction_bounds(
+            tools, mC_kg, bound_id, return_all_bounds, warn_on_error=True
+        )
 
     def _get_time_series(self, mc_npz, rebound_list, sampled_mc, masks):
         """
@@ -1990,26 +1922,6 @@ class Analysis:
             out["idx"] = np.arange(int(out["n_captured"]))
 
         return out
-    def _npz_to_plain_dict(data):
-        """
-        Convert npz or dict-like MC data into a plain dictionary.
-        This avoids keeping npz file handles in the merged object.
-        """
-        if hasattr(data, "files"):
-            return {k: np.array(data[k], copy=True) for k in data.files}
-
-        if isinstance(data, dict):
-            out = {}
-            for k, v in data.items():
-                if isinstance(v, np.ndarray):
-                    out[k] = np.array(v, copy=True)
-                else:
-                    out[k] = copy.copy(v)
-            return out
-
-        raise TypeError(f"Unsupported data type: {type(data)}")
-
-
     def merged_copy_for_error_analysis(self, other):
         """
         Return a new Analysis-like object containing pooled MC and rebound data

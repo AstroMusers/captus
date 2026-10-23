@@ -4,6 +4,7 @@ from itertools import groupby
 from operator import itemgetter
 import re
 import matplotlib.pyplot as plt
+from captus.utils.formatting import sci_notation_latex
 
 plt.rcParams['text.usetex'] = True
 plt.rcParams.update({'font.family': 'serif', 'font.size': 12, 'axes.labelsize': 12, 'axes.titlesize': 12,
@@ -19,8 +20,8 @@ def latex_label_key(s: str) -> str:
     s = s.strip()
     return s
 def advanced_stats(window, std_thresh, grad_thresh, SA, T):
-    if SA.dtype.byteorder == '>':  # Big-endian
-        SA = SA.byteswap().newbyteorder()
+    if not SA.dtype.isnative:
+        SA = SA.byteswap().view(SA.dtype.newbyteorder('='))
 
     rolling_std = pd.Series(SA).rolling(window=window, center=True).std()
     grad = np.abs(np.gradient(SA, T))
@@ -109,28 +110,6 @@ def format_func(value, tick_number):
         return r"$-2\pi$"
     else:
         return r"${0:.0f}\pi$".format(value / np.pi)
-    
-def sci_notation_latex(x, pos=None):
-    """Format a number as 2.3 × 10^4 for axis labels (LaTeX style)."""
-    if x == 0:
-        return "0"
-    else:
-        exponent = int(np.floor(np.log10(abs(x))))
-        coeff = x / 10**exponent
-        # print(f"Formatting {x:.2e} as {coeff:.2f} × 10^{exponent}")
-        # Use LaTeX formatting for matplotlib
-        if ((coeff - 1.00) < 1e-3):
-            return r"10$^{{{}}}$".format(exponent)
-        elif (coeff - 10.00) < 1e-3:
-            return r"10$^{{{}}}$".format(exponent + 1)
-        # elif exponent == 0:
-        #     return f"{x:.1f}"
-        # elif exponent == 1:
-        #     return f"{x*10:.1f}"
-        # elif exponent == -1:
-        #     return f"{x/10:.1f}"
-        else:
-            return r"${:.1f} \times 10^{{{}}}$".format(coeff, exponent)
     
 def log_tick_formatter(val, pos=None):
         """Format log scale ticks as decimal numbers"""

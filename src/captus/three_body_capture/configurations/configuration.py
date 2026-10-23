@@ -1,13 +1,22 @@
-import yaml
-import numpy as np
-import captus.utils.calculations as calc
-import astropy.constants as const
-from astropy import units as u
-import captus.utils.misc as misc
-import os, sys
+import os
 from importlib.resources import files
 from pathlib import Path
+
+import numpy as np
+import astropy.constants as const
+from astropy import units as u
 import yaml
+
+import captus.utils.calculations as calc
+
+
+_SYSTEM_CONFIG_FILES = {
+    "Sun": "SunJupiter.yaml",
+    "Cygnus": "CygnusX1.yaml",
+    "Intermediate": "IntermediateBHStar.yaml",
+    "OmegaCenturi": "OmegaCenturi.yaml",
+    "BetaPictoris": "BetaPictoris.yaml",
+}
 
 
 class Configuration:
@@ -22,58 +31,29 @@ class Configuration:
 
     def _set_params(self):
         # Set system parameters based on the configuration file
+        cfg = None
         sys_params = None
-        sim_params = None
         if self.config_file:
-            cfg = yaml.safe_load(open(self.config_file))
+            with Path(self.config_file).open("r") as config_file:
+                cfg = yaml.safe_load(config_file)
         else:
-            if 'Sun' in self.name:
-                config_path = (
-                    files("captus.three_body_capture.configurations")
-                    / "SunJupiter.yaml"
-                )
-                with config_path.open("r") as f:
-                    cfg = yaml.safe_load(f)
-                if 'lightPBH' in self.name:
-                    sys_params = cfg['system_param_dict_lightPBH']
-                if 'massivePBH' in self.name:
-                    sys_params = cfg['system_param_dict_massivePBH']
+            for system_name, filename in _SYSTEM_CONFIG_FILES.items():
+                if system_name in self.name:
+                    config_path = (
+                        files("captus.three_body_capture.configurations") / filename
+                    )
+                    with config_path.open("r") as config_file:
+                        cfg = yaml.safe_load(config_file)
+                    if system_name == "Sun":
+                        if "lightPBH" in self.name:
+                            sys_params = cfg["system_param_dict_lightPBH"]
+                        if "massivePBH" in self.name:
+                            sys_params = cfg["system_param_dict_massivePBH"]
 
-            if 'Cygnus' in self.name:
-                config_path = (
-                    files("captus.three_body_capture.configurations")
-                    / "CygnusX1.yaml"
-                )
-
-                with config_path.open("r") as f:
-                    cfg = yaml.safe_load(f)
-
-            if 'Intermediate' in self.name:
-                config_path = (
-                    files("captus.three_body_capture.configurations")
-                    / "IntermediateBHStar.yaml"
-                )
-
-                with config_path.open("r") as f:
-                    cfg = yaml.safe_load(f)
-
-            if 'OmegaCenturi' in self.name:
-                config_path = (
-                    files("captus.three_body_capture.configurations")
-                    / "OmegaCenturi.yaml"
-                )
-
-                with config_path.open("r") as f:
-                    cfg = yaml.safe_load(f)
-
-            if 'BetaPictoris' in self.name:
-                config_path = (
-                    files("captus.three_body_capture.configurations")
-                    / "BetaPictoris.yaml"
-                )
-
-                with config_path.open("r") as f:
-                    cfg = yaml.safe_load(f)
+        if cfg is None:
+            raise ValueError(
+                f"No built-in configuration matches {self.name!r}; supply config_file."
+            )
 
         if sys_params is None:
             sys_params = cfg['system_param_dict']
@@ -173,21 +153,15 @@ class Configuration:
 
     
     def _set_save_dir(self, mc_dir=None, rebound_dir=None, plots_dir=None):
-        name = self.name
-        dir_mc = mc_dir if mc_dir else f'runs/{name}/Monte_Carlo_Results'
-        save_dir_mc = os.path.join(Path.cwd(), '../',dir_mc)
-        os.makedirs(save_dir_mc, exist_ok=True)
-        self.save_dir_mc = save_dir_mc
-
-        dir_rebound = rebound_dir if rebound_dir else f'runs/{name}/Rebound_Simulation_Results'
-        save_dir_rebound = os.path.join(Path.cwd(), '../', dir_rebound)
-        os.makedirs(save_dir_rebound, exist_ok=True)
-        self.save_dir_rebound = save_dir_rebound
-
-        dir_plots = plots_dir if plots_dir else f'plots/{name}'
-        save_dir_plots = os.path.join(Path.cwd(), '../', dir_plots)
-        os.makedirs(save_dir_plots, exist_ok=True)
-        self.save_dir_plots = save_dir_plots
+        directories = (
+            ("save_dir_mc", mc_dir or f"runs/{self.name}/Monte_Carlo_Results"),
+            ("save_dir_rebound", rebound_dir or f"runs/{self.name}/Rebound_Simulation_Results"),
+            ("save_dir_plots", plots_dir or f"plots/{self.name}"),
+        )
+        for attribute, directory in directories:
+            path = os.path.join(Path.cwd(), "..", directory)
+            os.makedirs(path, exist_ok=True)
+            setattr(self, attribute, path)
 
     def get_save_dir_mc(self):
         if getattr(self, 'save_dir_mc', None) is None:

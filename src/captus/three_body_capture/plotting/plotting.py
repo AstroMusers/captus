@@ -17,9 +17,42 @@ from scipy.stats import gaussian_kde
 import pandas as pd
 import seaborn as sns
 from pathlib import Path
+from functools import wraps
+from inspect import Parameter, signature
+from matplotlib.figure import Figure
+from tdpy.plotting import apply_plot_theme, plot_background_colors, plot_style
+
+
+def _themed_plot(method):
+    original_signature = signature(method)
+
+    @wraps(method)
+    def render(self, *args, typeplotback=None, **kwargs):
+        selected = self.typeplotback if typeplotback is None else typeplotback
+        arguments = original_signature.bind(self, *args, **kwargs).arguments
+        with plot_style(selected):
+            result = method(self, *args, **kwargs)
+            figures = result if isinstance(result, (tuple, list)) else (result,)
+            for figure in figures:
+                if isinstance(figure, Figure):
+                    apply_plot_theme(figure)
+            axis = arguments.get('ax')
+            if axis is not None:
+                apply_plot_theme(axis.figure)
+            return result
+
+    parameters = list(original_signature.parameters.values())
+    insertion = next((index for index, parameter in enumerate(parameters)
+                      if parameter.kind == Parameter.VAR_KEYWORD), len(parameters))
+    parameters.insert(insertion, Parameter('typeplotback', Parameter.KEYWORD_ONLY, default=None))
+    render.__signature__ = original_signature.replace(parameters=parameters)
+    return render
 
 class Plots:
-    def __init__(self, name, analysis, analysis_dictionaries=None, **kwargs):
+    def __init__(self, name, analysis, analysis_dictionaries=None, typeplotback=None, **kwargs):
+
+        plot_background_colors(typeplotback)
+        self.typeplotback = typeplotback
 
         self.name = name
 
@@ -97,6 +130,17 @@ class Plots:
         fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex=sharex, figsize=figsize)
         return fig, axes
 
+    def _save_figure(self, figure, path, **kwargs):
+        apply_plot_theme(figure)
+        kwargs['facecolor'] = figure.get_facecolor()
+        print(f'Writing to {path}...')
+        return figure.savefig(path, **kwargs)
+
+    def _show_figure(self):
+        apply_plot_theme(plt.gcf())
+        plt.show()
+
+    @_themed_plot
     def plot_metric_wrt_v(self, metric_list, metric_ylabel, analysis_name, metric_masks=None, metric_labels=None, fig_size=None, save=True):
         """
         Expect each analysis to expose:
@@ -162,9 +206,10 @@ class Plots:
         if save:
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
-            fig.savefig(out, dpi=300)
+            self._save_figure(fig, out, dpi=300)
         return fig
 
+    @_themed_plot
     def plot_metric_wrt_v_twinaxis(self, metric_lists, metric_ylabels, analysis_name, metric_masks=None, metric_labels=None, fig_size=None, save=True):
         """
         Plot two metrics on twin y-axes against v∞.
@@ -238,9 +283,10 @@ class Plots:
         if save:
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
-            fig.savefig(out, dpi=300)
+            self._save_figure(fig, out, dpi=300)
         return fig
 
+    @_themed_plot
     def plot_metric_array_wrt_v(self, metric_list, metric_ylabel, analysis_name, metric_masks=None, metric_labels=None, fig_size=None, save=True):
         """
         Expect each analysis to expose:
@@ -338,9 +384,10 @@ class Plots:
         if save:
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
-            fig.savefig(out, dpi=300)
+            self._save_figure(fig, out, dpi=300)
         return fig, data_sorted
 
+    @_themed_plot
     def plot_metric_array_wrt_v_twinaxis(self, metric_lists, metric_ylabels, analysis_name, metric_masks=None, metric_labels=None, fig_size=None, save=True):
         """
         Plot two metrics on twin y-axes against v∞.
@@ -467,11 +514,12 @@ class Plots:
         if save:
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
-            fig.savefig(out, dpi=300)
+            self._save_figure(fig, out, dpi=300)
         return fig
 
     
 
+    @_themed_plot
     def multiple_analysis_metric_wrt_v_twinaxis(self, metric_lists, metric_ylabels, metric_labels=None, ticks=[None, None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'log', 'log'], v_key='All', global_ylim=True, normalize=False, unit_change=[1, 1, 1], match_colors=True, fig_size=None, save=True):
         """
         Plot histogram for multiple analyses.
@@ -745,7 +793,7 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
             figname = f'multiple_analysis_{metricsname}_twinaxis_vs_v_multipanel.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
 
     # def multiple_analysis_metric_wrt_x_twinaxis(self, metric_lists, metric_ylabels, metric_x='mC', metric_labels=None, ticks=[None, None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'log', 'log'], v_key='All', global_ylim=True, normalize=False, unit_change=[1, 1, 1], match_colors=True, fig_size=None, save=True):
@@ -1004,6 +1052,7 @@ class Plots:
     #         figname = f'multiple_analysis_{metricsname}_twinaxis_vs_m.png'
     #         out = os.path.join(self.plots_dir, figname)
     #         fig.savefig(out, dpi=300, bbox_inches='tight')
+    @_themed_plot
     def multiple_analysis_metric_wrt_x(self, metric_list, metric_ylabel, metric_xname='mC', metric_x_label=None, metric_labels=None, ticks=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'log'], v_key='All', global_ylim=True, normalize=False, unit_change=[1, 1], match_colors=True, fig_size=None, save=True, save_as=None):
         """
         Plot one or more metrics on a single y-axis against a custom x-axis metric.
@@ -1199,8 +1248,9 @@ class Plots:
                 metricsname = "_".join([plu.latex_label_key(metric_ylabel)])
                 figname = f'multiple_analysis_{metricsname}_vs_x_.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
+    @_themed_plot
     def multiple_analysis_metric_wrt_x_twinaxis(self, metric_lists, metric_ylabels, metric_xname='mC', metric_x_label=None, metric_labels=None, ticks=[None, None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'log', 'log'], v_key='All', global_ylim=True, normalize=False, unit_change=[1, 1, 1], match_colors=True, fig_size=None, save=True):
         """
         Plot two metrics on twin y-axes against a custom x-axis metric.
@@ -1465,8 +1515,9 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
             figname = f'multiple_analysis_{metricsname}_twinaxis_vs_x.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
     
+    @_themed_plot
     def multiple_analysis_metric_wrt_v_twinaxis_errorband(self, metric_lists, metric_ylabels, metric_labels=None, ticks=[None, None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'log', 'log'], v_key='All', global_ylim=True, normalize=False, unit_change=[1, 1, 1], match_colors=True, fig_size=None, save=True):
         """
         Plot histogram for multiple analyses.
@@ -1740,8 +1791,9 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
             figname = f'multiple_analysis_{metricsname}_twinaxis_vs_v_multipanel.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
+    @_themed_plot
     def multiple_analysis_metric_wrt_v_multipanel(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = [r'M$_{PBH}$', r'M$_{\odot}$'], scale = 'log', v_key = 'All', unit_change=[1e-3, 1, 1], normalize='importance_sampling_size', fig_size=None, save=True):
         """
         Plot histogram for multiple analyses.
@@ -1848,8 +1900,9 @@ class Plots:
         if save:
             figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300)       
+            self._save_figure(fig, out, dpi=300)
 
+    @_themed_plot
     def multiple_analysis_metric_wrt_v(self, metric_list, metric_ylabel, metric_labels=None, analysis_key = 'All', analysis_zkey = 'mC', analysis_zlabel = r'M$_{PBH}$', scale = 'log', v_key = 'All', fig_size=None, save=True):
         """
         Plot histogram for multiple analyses.
@@ -1926,8 +1979,9 @@ class Plots:
             figname = f'multiple_analysis_{"_".join(metric_list)}_vs_v.png'
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
-            fig.savefig(out, dpi=300)
+            self._save_figure(fig, out, dpi=300)
 
+    @_themed_plot
     def multiple_analysis_metric_wrt_v_twinaxis_multipanel(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'log', 'log'], v_key='All', global_ylim=True, normalize=False, unit_change=[1, 1, 1], match_colors=True, fig_size=None, save=True):
         """
         Plot two sets of metrics on twin y-axes in multi-panel layout.
@@ -2187,10 +2241,11 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
             figname = f'multiple_analysis_{metricsname}_twinaxis_vs_v_multipanel.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
         
         
 
+    @_themed_plot
     def multiple_analysis_metric_array_wrt_v_twinaxis_multipanel(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['log', 'log'], unit_change=[1e-3, 1, 1], global_ylim=False, metric_masks=None, fig_size=None, save_as=None, save=True):
         """
         Plot array metrics (like semi_major_axes) as violin plots with twin y-axes in multi-panel layout.
@@ -2449,8 +2504,9 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
             figname = f'multiple_analysis_{metricsname}_twinaxis_vs_v.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
+    @_themed_plot
     def multiple_analysis_metric_array_wrt_v_twinaxis_violin(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['log', 'log'], unit_change=[1e-3, 1, 1], global_ylim=False, metric_masks=None, fig_size=None, save_as=None, save=True):
             """
             Plot array metrics (like semi_major_axes) as violin plots with twin y-axes in multi-panel layout.
@@ -2700,9 +2756,10 @@ class Plots:
                 metricsname = "_".join([plu.latex_label_key(ylabel) for ylabel in metric_ylabels])
                 figname = f'multiple_analysis_{metricsname}_twinaxis_vs_v.png'
                 out = os.path.join(self.plots_dir, figname)
-                fig.savefig(out, dpi=300, bbox_inches='tight')
+                self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
 
+    @_themed_plot
     def multiple_analysis_metric_gaussian_kde_multipanel(self, metric_xnames, metric_ynames, metric_xlabel, metric_ylabel, cmaps, reverse_axes=None, ticks=None, percentage_annotations=None, add_negative_top_axis=False, cut=0.0, time_stamp=None, analysis_key='All', analysis_zkey='mC', mean_annotations=False, analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['linear', 'linear', 'linear'], unit_change=[1, 1, 1], ranges=None, global_ylim=False, metric_mask=None, bw_adjust=0.7, thresh=0.1, plot_outliers=True, fig_size=None, save_as=None, save=True):
         """
         Plot array metrics as Gaussian KDE per v per analysis in multi-panel layout.
@@ -2960,9 +3017,10 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(label) for label in [metric_ylabel, metric_xlabel]])
             figname = save_as if save_as else f'multiple_analysis_{metricsname}_gaussian_kde_outliers.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=500, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=500, bbox_inches='tight')
             print(f'✓ Saved: {figname}')
 
+    @_themed_plot
     def single_analysis_corner_plot(self, metric_names, metric_labels,analysis_name=None, v_key='All', metric_masks=None, scale='linear', unit_change=None, ranges=None, quantiles=[0.16, 0.5, 0.84], plot_datapoints=True, plot_density=True, plot_contours=True, fig_size=None, save_as=None, save=True):
         """
         Create a corner plot for a single analysis using corner.corner().
@@ -3095,10 +3153,11 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(label) for label in metric_labels])
             figname = save_as if save_as else f'{analysis_name}_corner_{metricsname}.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
             print(f'✓ Saved: {figname}')
         
         return fig
+    @_themed_plot
     def multiple_analysis_metric_timeseries_gaussian_kde_multipanel(self, metric_xnames, metric_ynames, metric_xlabel, metric_ylabel, levels, cmaps, dt, reverse_axes=None, ticks=None, percentage_annotations=None, add_negative_top_axis=False, cut=0.0, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['linear', 'linear', 'linear'], unit_change=[1, 1, 1], ranges=None, global_ylim=False, metric_mask=None, bw_adjust=0.7, thresh=0.1, plot_outliers=True, fig_size=None, save_as=None, save=True):
         """
         Plot array metrics as Gaussian KDE per v per analysis in multi-panel layout.
@@ -3314,10 +3373,11 @@ class Plots:
             metricsname = "_".join([plu.latex_label_key(label) for label in [metric_ylabel, metric_xlabel]])
             figname = save_as if save_as else f'multiple_analysis_{metricsname}_gaussian_kde_outliers.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
             print(f'✓ Saved: {figname}')
 
 
+    @_themed_plot
     def multiple_analysis_time_series_2dhistogram(self, metric_name, metric_ylabel, time_ylabel, metric_mask=None, ticks=None, dt_fixed=1000, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'linear', 'log'], v_key='All', global_ylim=True, normalize=False, metric_range=None, time_range=None, v_lim=[None, None], time_bins=1000, metric_bins=1000, unit_change=[1, 1, 1], use_existing_time_series=True, fig_size=None, save=True, save_as=None):
         """
         Plot 2D histogram of time series metric in multi-panel layout.
@@ -3543,10 +3603,11 @@ class Plots:
         if save:
             figname = f'multiple_analysis_{metric_name}_2dhistogram_multipanel.png' if save_as is None else save_as
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=500, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=500, bbox_inches='tight')
         
         return self.time_series_dicts
 
+    @_themed_plot
     def multiple_analysis_time_series_2dhistogram_multipanel(self, metric_name, metric_ylabel, time_ylabel, ticks=[None, None, None], metric_mask=None, dt_fixed=1000, survivor_per_at_t=False, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'linear', 'log'], v_key='All', global_ylim=True, normalize=False, metric_range=None, time_range=None, v_lim=[None, None], time_bins=1000, metric_bins=1000, unit_change=[1, 1, 1], use_existing_time_series=True, fig_size=None, save=True, save_as=None):
         """
         Plot 2D histogram of time series metric in multi-panel layout.
@@ -3857,10 +3918,11 @@ class Plots:
         if save:
             figname = f'multiple_analysis_{metric_name}_2dhistogram_multipanel.png' if save_as is None else save_as
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
         
         return self.time_series_dicts
 
+    @_themed_plot
     def multiple_analysis_time_series_2dhistogram_multipanel_stacked(self, metric_names, metric_ylabels, time_ylabel, ticks=[None, None, None, None], metric_masks=None, mask_labels=None, dt_fixed=1000, survivor_per_at_t=False, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=['linear', 'linear', 'linear', 'log'], v_key='All', global_ylim=True, normalize=False, metric_ranges=None, time_range=None, v_lim=[None, None], time_bins=1000, metric_bins=1000, unit_change=[1, 1, 1], use_existing_time_series=True, fig_size=None, save=True, save_as=None):
         """
         Plot 2D histogram of time series metrics in multi-panel layout with stacked subplots.
@@ -4142,10 +4204,11 @@ class Plots:
         if save:
             figname = save_as if save_as else f'multiple_analysis_{"_".join(metric_names)}_2dhistogram_stacked.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
         
         return self.time_series_dicts
 
+    @_themed_plot
     def multiple_analysis_voxel_2dhistogram(self, metric_name, metric_ylabel, voxel_name, voxel_xlabel, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=[[['linear', 'log', 'log'], ['linear', 'log', 'log']], [['linear', 'log', 'log'], ['linear', 'log', 'log']]], v_key='All', global_ylim=True, normalize=False, normalize_annotation=False, annotate_bins=False, custom_voxel_bins=[[None, None], [None, None]], metric_range=None, voxel_range=[[None, None], [None, None]], v_lim=[None, None], voxel_bins=1000, metric_bins=1000, unit_change=[[[1, 1, 1], [1, 1, 1]], [[1, 1, 1], [1, 1, 1]]], metric_masks=None, use_existing_time_series=False, fig_size=None, save=True, save_as=None):
         """
         Plot 2D histogram of metric vs voxel parameter.
@@ -4465,9 +4528,10 @@ class Plots:
                 voxel_str = '_'.join(voxel_name_list) if isinstance(voxel_name, list) else voxel_name
                 figname = f'multiple_analysis_{metric_name}_2dhistogram_{voxel_str}_{metric_bins*voxel_bins}_{metric_range[1] if metric_range is not None else "nolim"}.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
  
+    @_themed_plot
     def multiple_analysis_gaussian_kde(self, metric_name, metric_label, voxel_name, voxel_label, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=[[['linear', 'log', 'log'], ['linear', 'log', 'log']], [['linear', 'log', 'log'], ['linear', 'log', 'log']]], v_key='All', global_ylim=True, normalize=False, range=None, v_lim=[None, None], voxel_bins=1000, metric_bins=1000, unit_change=[[[1, 1, 1], [1, 1, 1]], [[1, 1, 1], [1, 1, 1]]], metric_masks=None, use_existing_time_series=False, fig_size=None, save=True, save_as=None):
         """
         Plot 2D scatter of metric pairs vs voxel parameter (colored by voxel value).
@@ -4757,9 +4821,10 @@ class Plots:
                 metric_str = '_'.join(['_'.join(pair) for pair in metric_name_list])
                 figname = f'multiple_analysis_{metric_str}_2D_scatter_{voxel_str}.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
             print(f'\n✓ Saved: {figname}')
 
+    @_themed_plot
     def multiple_analysis_m_v_contour(self, metric_name, metric_ylabel, voxel_name, voxel_xlabel, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], scale=[[['linear', 'log', 'log'], ['linear', 'log', 'log']], [['linear', 'log', 'log'], ['linear', 'log', 'log']]], v_key='All', global_ylim=True, normalize=False, normalize_annotation=False, annotate_bins=False, custom_voxel_bins=[[None, None], [None, None]], metric_range=None, voxel_range=[[None, None], [None, None]], v_lim=[None, None], voxel_bins=1000, metric_bins=1000, unit_change=[[[1, 1, 1], [1, 1, 1]], [[1, 1, 1], [1, 1, 1]]], metric_masks=None, use_existing_time_series=False, fig_size=None, save=True, save_as=None):
         """
         Plot contour of metric on mass and velocity grid parameter.
@@ -5004,8 +5069,9 @@ class Plots:
                 voxel_str = '_'.join(voxel_name_list) if isinstance(voxel_name, list) else voxel_name
                 figname = f'multiple_analysis_{metric_name}_2dhistogram_{voxel_str}_{metric_bins*voxel_bins}_{metric_range[1] if metric_range is not None else "nolim"}.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
+    @_themed_plot
     def multiple_analysis_metric_array_wrt_m_twinaxis_violin(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['log', 'log'], unit_change=[1e-3, 1, 1], global_ylim=False, metric_masks=None, fig_size=None, save_as=None, save=True):
             """
             Plot array metrics as violin plots with twin y-axes.
@@ -5227,8 +5293,9 @@ class Plots:
                 metricsname = "_".join([metric_ylabels[0].replace(' ', '_'), metric_ylabels[1].replace(' ', '_')])
                 figname = save_as if save_as else f'multiple_analysis_{metricsname}_twinaxis_vs_mC.png'
                 out = os.path.join(self.plots_dir, figname)
-                fig.savefig(out, dpi=300, bbox_inches='tight')
+                self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
+    @_themed_plot
     def multiple_analysis_metric_array_wrt_v_m_twinaxis_violin(self, metric_lists, metric_ylabels, metric_labels=None, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', scale=['log', 'log'], unit_change=[1, 1, 1], global_ylim=False, metric_masks=None, fig_size=None, save_as=None, save=True):
             """
             Plot array metrics as violin plots with twin y-axes.
@@ -5455,9 +5522,10 @@ class Plots:
                 metricsname = "_".join([metric_ylabels[0].replace(' ', '_'), metric_ylabels[1].replace(' ', '_')])
                 figname = save_as if save_as else f'multiple_analysis_{metricsname}_twinaxis_vs_v_colored_mC.png'
                 out = os.path.join(self.plots_dir, figname)
-                fig.savefig(out, dpi=300, bbox_inches='tight')
+                self._save_figure(fig, out, dpi=300, bbox_inches='tight')
 
     
+    @_themed_plot
     def multiple_analysis_metric_array_wrt_twinxaxis_linehist(self, metric_lists, metric_xlabels, analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], unit_change=[1, 1, 1], global_ylim=False, metric_range=None, metric_masks=None, normalization=1,fig_size=None, save_as=None, save=True):
         """
         Plot array metrics as line plots with twin x-axes, including histograms of combined v_inf distributions for each analysis represented with a different line.
@@ -5666,10 +5734,11 @@ class Plots:
             metric_top_name = metric_lists[1][0] if isinstance(metric_lists[1], list) else metric_lists[1]
             figname = save_as if save_as else f'multiple_analysis_{metric_bottom_name}_vs_{metric_top_name}_linehist.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
             print(f'✓ Saved: {figname}')
         
 
+    @_themed_plot
     def multiple_analysis_metric_array_wrt_twinxaxis_stephist(self, metric_lists, metric_xlabels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], unit_change=[1, 1, 1], global_ylim=False, metric_range=None, metric_masks=None, ticks=None, normalization=1, fig_size=None, save_as=None, save=True):
         """
         Plot array metrics as step histograms with twin x-axes, showing distributions for each analysis with different lines.
@@ -5958,10 +6027,11 @@ class Plots:
             metric_top_name = metric_lists[1][0] if isinstance(metric_lists[1], list) else metric_lists[1]
             figname = save_as if save_as else f'multiple_analysis_{metric_bottom_name}_vs_{metric_top_name}_stephist.png'
             out = os.path.join(self.plots_dir, figname)
-            fig.savefig(out, dpi=300, bbox_inches='tight')
+            self._save_figure(fig, out, dpi=300, bbox_inches='tight')
             print(f'✓ Saved: {figname}')
 
     
+    @_themed_plot
     def multiple_analysis_contour_plot(self, analysis_key='All', x_metric='semi_major_axes', y_metric='eccentricities', x_ylabel='Semi-Major Axis [AU]', y_ylabel='Eccentricity', v_key='All', x_bins=50, y_bins=50, x_range=None, y_range=None, fig_size=None, save=True): 
         """
         Plot contour plot of two metrics for multiple analyses.
@@ -6070,8 +6140,9 @@ class Plots:
             figname = f'multiple_analysis_{x_metric}_vs_{y_metric}_contour.png'
             out = os.path.join(self.plots_dir, figname)
             fig.tight_layout()
-            fig.savefig(out, dpi=300)
+            self._save_figure(fig, out, dpi=300)
 
+    @_themed_plot
     def plot_kde(self, metric_lists, metric_labels, labels=[None, None], analysis_key='All', analysis_zkey='mC', analysis_zlabel=[r'M$_{PBH}$', r'M$_{\odot}$'], v_key='All', bins=[50, 50], bin_scale=['log', 'log'], metric_scale=['linear', 'linear'], global_ylim=False, metric_range=None, metric_masks=None,  normalization=1, thresh=0.1, levels=10, bw_adjust=0.6, zorder=[1,1,1], alpha=[1,1,1], linewidth=[1,1,1], linestyle=['-', '--', ':'], cmaps=None, fig_size=(3.5, 3), fill=[True,True,True], unit_change=(1, 1), reverse_axes=None, scale=('linear', 'linear'), ticks=None, ranges=None,  cut=3.0, extra_scatters=None,extra_fills=None, legend_position=None, legend_title=None, save=False, save_as=None, ax=None, fontsize=None):
         """
         Plot KDEs for multiple analyses with twin axes, showing distributions for each analysis with different lines.
@@ -6476,12 +6547,12 @@ class Plots:
             else:
                 figname = f'{metric_labels[0].strip()}_vs_{metric_labels[1].strip()}_kde.png'
             figpath = os.path.join(self.plots_dir, figname)
-            plt.savefig(figpath, dpi=300)
+            self._save_figure(plt.gcf(), figpath, dpi=300)
             print(f"Saved KDE plot as {figname}")
         
         # Only show if we created the figure (not using external axis)
         if ax is None:
-            plt.show()
+            self._show_figure()
         
 
 

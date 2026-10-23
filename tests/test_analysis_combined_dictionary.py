@@ -1,11 +1,11 @@
-import numpy as np
-from captus.three_body_capture.analysis.analysis import Analysis
-
-
-# ...existing code...
-import numpy as np
 from types import SimpleNamespace
+
+import numpy as np
+import pytest
+from astropy import units as u
+
 from captus.three_body_capture.analysis.analysis import Analysis
+from captus.utils import calculations as calc
 
 class FakeNPZ:
     """Minimal np.load(...)-like object used by Analysis (has .files and __getitem__)."""
@@ -46,9 +46,6 @@ def _make_analysis():
     analysis.rebound_results = {"V1": [FakeNPZ({"i": np.array([0])})]}
     analysis.results_dictionary = {"stale": True}
     return analysis
-
-# ...existing tests...
-
 
 def test_get_combined_dictionary_recomputes_when_cache_disabled(monkeypatch):
     analysis = _make_analysis()
@@ -117,3 +114,77 @@ def test_get_combined_dictionary_recomputes_when_cache_disabled(monkeypatch):
     assert catalog["V1"]["sample_number"] == 1
     assert catalog["v_keys"] == ["V1"]
     assert catalog["errors"] == {"ok": True}
+
+
+@pytest.mark.parametrize("return_all_bounds", [False, True])
+@pytest.mark.parametrize("mass_solar", [0.1, 1.0, 10.0, 100.0, 1000.0])
+def test_pbh_bounds_entry_points_preserve_results_and_warnings(monkeypatch, capsys, mass_solar, return_all_bounds):
+    def load_bound(bound_id):
+        if bound_id == "missing":
+            raise FileNotFoundError("missing bound")
+        scale = 1.0 if bound_id == "first" else 2.0
+        return np.array([1.0, 100.0]), scale * np.array([0.01, 1.0])
+
+    monkeypatch.setenv("PBHBOUNDS_PATH", "fixture")
+    monkeypatch.setattr(calc, "_load_pbhbounds_tools", lambda path: SimpleNamespace(load_bound=load_bound))
+    mass_kg = (mass_solar * u.M_sun).to_value(u.kg)  # [kg]
+    bound_ids = ["first", "second", "missing"]
+    standalone = calc.get_pbh_fraction_bounds(mass_kg, bound_ids, return_all_bounds)
+    assert capsys.readouterr().out == ""
+    analysis = Analysis.__new__(Analysis)
+    result = analysis.get_pbh_fraction_bounds({"mC": mass_kg}, bound_ids, return_all_bounds)
+    assert "Could not load bound 'missing': missing bound" in capsys.readouterr().out
+    assert result.keys() == standalone.keys()
+    for key in result:
+        if key.startswith("status_"):
+            assert result[key] == standalone[key]
+        else:
+            np.testing.assert_allclose(result[key], standalone[key], equal_nan=True)
+    assert result["status_missing"] == "error"
+    assert np.isnan(result["bound_missing"])
+    assert result["mC_Msun"] == (mass_kg * u.kg).to_value(u.M_sun)
+    if 1.0 <= result["mC_Msun"] <= 100.0:
+        assert result["status_first"] == "valid"
+        assert result["bound_first"] == pytest.approx(0.01 * mass_solar)
+        assert result["bound_second"] == pytest.approx(0.02 * mass_solar)
+        assert ("min_fraction" in result) == (not return_all_bounds)
+        if not return_all_bounds:
+            assert result["min_fraction"] == pytest.approx(0.01 * mass_solar)
+            assert result["max_fraction"] == pytest.approx(0.02 * mass_solar)
+            assert result["mean_fraction"] == pytest.approx(0.015 * mass_solar)
+    else:
+        assert result["status_first"] == "out_of_range"
+        assert np.isnan(result["bound_first"])
+        assert "min_fraction" not in result
+    single = analysis.get_pbh_fraction_bounds({"mC": mass_kg}, "first")
+    assert "min_fraction" not in single
+    assert "status_second" not in single
+
+
+def test_pbh_bounds_preserve_missing_input_errors(monkeypatch):
+    analysis = Analysis.__new__(Analysis)
+    monkeypatch.delenv("PBHBOUNDS_PATH", raising=False)
+    with pytest.raises(ValueError, match="PBHbounds path not provided"):
+        calc.get_pbh_fraction_bounds(None, "first")
+    with pytest.raises(ValueError, match="PBHbounds path not provided"):
+        analysis.get_pbh_fraction_bounds({}, "first")
+    monkeypatch.setenv("PBHBOUNDS_PATH", "fixture")
+    monkeypatch.setattr(calc, "_load_pbhbounds_tools", lambda path: SimpleNamespace())
+    with pytest.raises(ValueError, match="Mpbh must be provided"):
+        calc.get_pbh_fraction_bounds(None, "first")
+    with pytest.raises(ValueError, match="catalog must contain 'mC'"):
+        analysis.get_pbh_fraction_bounds({}, "first")
+
+
+def test_pbh_tools_loader_reads_configured_checkout(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "tools.py"
+    with pytest.raises(FileNotFoundError, match="PBHbounds tools.py not found"):
+        calc._load_pbhbounds_tools(tmp_path)
+    print("Writing to %s..." % path)
+    path.write_text("def load_bound(bound_id):\n    return bound_id\n")
+    tools = calc._load_pbhbounds_tools(str(tmp_path))
+    assert tools.load_bound("first") == "first"
+    assert "Reading from %s..." % path in capsys.readouterr().out
+    monkeypatch.setattr(calc.importlib.util, "spec_from_file_location", lambda *args: None)
+    with pytest.raises(ImportError, match="Could not create import spec"):
+        calc._load_pbhbounds_tools(tmp_path)

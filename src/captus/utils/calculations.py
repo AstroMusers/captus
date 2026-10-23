@@ -3,8 +3,9 @@ from math import pi
 import numpy as np
 from numpy.polynomial.legendre import leggauss
 from pathlib import Path
-import importlib
+import importlib.util
 from scipy.optimize import brentq, minimize_scalar
+from scipy.spatial.transform import Rotation
 from astropy import units as u
 import os
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -758,9 +759,9 @@ def beta_2(L_vec, vBVec, rABVec):
     rel_inclination_deg = np.degrees(np.arccos(np.clip(cos_rel, -1, 1)))
     return rel_inclination_deg
 
-def capture_cross_section(b_min, b_max):
+def annular_cross_section(b_min, b_max):
     """
-    Capture cross-section σ_cap.
+    Geometric cross-section of an annulus between two impact parameters.
 
     Parameters
     ----------
@@ -795,6 +796,13 @@ def capture_cross_section_MC(b, n_sampled):
     b_au = (np.array(b)*u.m).to(u.au)  # Convert b from meters to astronomical units
     return 2 * np.pi * (np.max(b_au)-np.min(b_au)) * np.sum(b_au) / n_sampled
 
+def _capture_cross_section_contributions(b_mins, b_maxs, b_cap):
+    """Return trajectory contributions in au^2 from impact parameters in m."""
+    b_mins_au = (np.asarray(b_mins) * u.m).to(u.au)  # [au]
+    b_maxs_au = (np.asarray(b_maxs) * u.m).to(u.au)  # [au]
+    return np.pi * (b_maxs_au**2 - b_mins_au**2)
+
+
 def capture_cross_section(b_mins, b_maxs, b_cap, n_sampled):
     """
     Monte Carlo estimate of capture cross-section σ_cap.
@@ -815,48 +823,11 @@ def capture_cross_section(b_mins, b_maxs, b_cap, n_sampled):
     float
         σ_cap
     """
-    b_cap_au = (np.asarray(b_cap) * u.m).to(u.au)
-    b_mins_au = (np.asarray(b_mins) * u.m).to(u.au)
-    b_maxs_au = (np.asarray(b_maxs) * u.m).to(u.au)
-
-    contrib = 2 * np.pi * (b_maxs_au - b_mins_au) * b_cap_au
+    contrib = _capture_cross_section_contributions(b_mins, b_maxs, b_cap)  # [au^2]
 
     sigma_cap = np.sum(contrib) / n_sampled
 
     return contrib / n_sampled, sigma_cap
-# ...existing code...
-# def capture_cross_section_MC(b_captured, n_sampled, bmin, bmax, out_unit=u.au**2):
-#     """
-#     Monte Carlo estimate of capture cross-section:
-#         sigma_hat = (2*pi*(bmax-bmin)/N) * sum_{captured} b_i
-
-#     Parameters
-#     ----------
-#     b_captured : array-like
-#         Captured impact parameters [meters].
-#     n_sampled : int
-#         Total number of sampled trials N.
-#     bmin, bmax : float
-#         Sampling bounds for impact parameter [meters].
-#     out_unit : astropy unit, optional
-#         Output unit (default: au^2).
-
-#     Returns
-#     -------
-#     float
-#         Estimated capture cross-section in `out_unit`.
-#     """
-#     if n_sampled <= 0:
-#         return 0.0
-
-#     b_captured = np.asarray(b_captured, dtype=float)
-#     if b_captured.size == 0:
-#         return 0.0
-
-#     C = 2.0 * np.pi * (bmax - bmin)  # [m]
-#     sigma_m2 = C * np.sum(b_captured) / n_sampled  # [m^2]
-
-#     return (sigma_m2 * u.m**2).to(out_unit).value
 def b_unit_vector( v1primeMag, v1primeVec, phi):
     """
     v1prime_vec: 3D numpy array (v1x', v1y', v1z')
@@ -1055,8 +1026,7 @@ def rodrigues_rotate(v, k, angle):
     """
     v = np.asarray(v, float)
     k = unit(k)
-    ca, sa = np.cos(angle), np.sin(angle)
-    return v*ca + np.cross(k, v)*sa + k*np.dot(k, v)*(1-ca)
+    return Rotation.from_rotvec(k * angle).apply(v)
 
 def exit_point_from_scatter(v1primeMag, v1primeVec, bVec, muB, rClose, b):
     """
@@ -1102,61 +1072,10 @@ def cartesian_to_spherical(x):
     phi = np.arctan2(x[1], x[0])  # azimuthal angle
     return r, theta, phi
 
-import numpy as np
-
-# def capture_cross_section_and_error(b_captured, N, bmin, bmax, conf=0.95):
-#     """
-#     Parameters
-#     ----------
-#     b_captured : array-like
-#         Impact parameters of captured trials only.
-#     N : int
-#         Total number of trials (fixed, e.g. 1000).
-#     bmin, bmax : float
-#         Sampling interval in impact parameter.
-#     conf : float
-#         Confidence level, default 0.95.
-
-#     Returns
-#     -------
-#     sigma_hat : float
-#         Estimated capture cross section.
-#     se : float
-#         Standard error of the estimator.
-#     ci : tuple
-#         Symmetric normal-approx confidence interval.
-#     """
-#     b_captured = np.asarray(b_captured, dtype=float)
-
-#     S1 = np.sum(b_captured)
-#     S2 = np.sum(b_captured**2)
-
-#     C = 2.0 * np.pi * (bmax - bmin)
-
-#     sigma_hat = C * S1 / N
-
-#     if N < 2:
-#         return sigma_hat, np.nan, (np.nan, np.nan)
-
-#     se = C * np.sqrt((S2 - S1**2 / N) / (N * (N - 1)))
-
-#     # Normal approximation
-#     z = 1.0 if np.isclose(conf, 0.68) else 1.96 if np.isclose(conf, 0.95) else None
-#     if z is None:
-#         from scipy.stats import norm
-#         z = norm.ppf(0.5 + conf / 2)
-
-#     ci = (sigma_hat - z * se, sigma_hat + z * se)
-
-#     return sigma_hat, se, ci
 def capture_cross_section_and_error(
     b_cap, b_mins, b_maxs, n_sampled, conf=0.95
     ):
-    b_cap_au = (np.asarray(b_cap) * u.m).to(u.au).value
-    b_mins_au = (np.asarray(b_mins) * u.m).to(u.au).value
-    b_maxs_au = (np.asarray(b_maxs) * u.m).to(u.au).value
-
-    X_cap = 2 * np.pi * (b_maxs_au - b_mins_au) * b_cap_au  # au^2
+    X_cap = _capture_cross_section_contributions(b_mins, b_maxs, b_cap).to_value(u.au**2)  # [au^2]
 
     S1 = np.sum(X_cap)
     S2 = np.sum(X_cap**2)
@@ -1278,7 +1197,6 @@ def integrated_rate_and_error(x, rate_per_v, rate_err_per_v, n_gl=100, q_vals=No
 
     return total_rate, total_err, ci68, ci95, alpha, qvals if q_vals is not None else None
 
-# ...existing code...
 def weighted_quantile(values, quantiles, weights=None):
     values = np.asarray(values, dtype=float)
     q = np.asarray(quantiles, dtype=float)
@@ -1297,8 +1215,6 @@ def weighted_quantile(values, quantiles, weights=None):
 
     cdf = np.cumsum(w) / np.sum(w)
     return np.interp(q, cdf, v)
-# ...existing code...
-
 def dm_density_profile_milkyway(r):
     """
     Einasto density profile for the Milky Way.
@@ -1766,6 +1682,20 @@ def get_pbh_number_density_r(Mpbh, ri, rf, num_points):
     return radii, n_pbh
 
 
+def _load_pbhbounds_tools(pbhbounds_path):
+    """Load the tools module from a Captus-compatible PBHbounds checkout."""
+    tools_path = Path(pbhbounds_path) / "tools.py"
+    if not tools_path.exists():
+        raise FileNotFoundError(f"PBHbounds tools.py not found at: {tools_path}")
+    spec = importlib.util.spec_from_file_location("pbhbounds_tools", tools_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not create import spec for {tools_path}")
+    tools = importlib.util.module_from_spec(spec)
+    print(f"Reading from {tools_path}...")
+    spec.loader.exec_module(tools)
+    return tools
+
+
 def get_pbh_fraction_bounds(Mpbh, bound_id, return_all_bounds=False):
     """
     Get the PBH fraction bounds for the mC mass from PlotPBHbounds module.
@@ -1784,30 +1714,6 @@ def get_pbh_fraction_bounds(Mpbh, bound_id, return_all_bounds=False):
     -------
     dict : Contains 'mC_Msun' and bound values 'bound_{bound_id}' for each constraint
     """
-    def load_pbhbounds_tools(pbhbounds_path):
-        pbhbounds_path = Path(pbhbounds_path)
-        tools_path = pbhbounds_path / "tools.py"
-
-        if not tools_path.exists():
-            raise FileNotFoundError(
-                f"PBHbounds tools.py not found at: {tools_path}"
-            )
-
-        spec = importlib.util.spec_from_file_location(
-            "pbhbounds_tools",
-            tools_path,
-        )
-
-        if spec is None or spec.loader is None:
-            raise ImportError(
-                f"Could not create import spec for {tools_path}"
-            )
-
-        tools = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(tools)
-
-        return tools
-
     # Get the PBHbounds path from the environment variable
     pbhbounds_path = os.environ.get("PBHBOUNDS_PATH")
 
@@ -1817,13 +1723,17 @@ def get_pbh_fraction_bounds(Mpbh, bound_id, return_all_bounds=False):
             "or set the PBHBOUNDS_PATH environment variable."
         )
     # Load PBHbounds tools module
-    tools = load_pbhbounds_tools(pbhbounds_path)
+    tools = _load_pbhbounds_tools(pbhbounds_path)
     
     # Convert mC from kg to solar masses
     mC_kg = Mpbh
     if mC_kg is None:
         raise ValueError("Mpbh must be provided to compute mC and query bounds.")
-    
+    return _evaluate_pbh_fraction_bounds(tools, mC_kg, bound_id, return_all_bounds)
+
+
+def _evaluate_pbh_fraction_bounds(tools, mC_kg, bound_id, return_all_bounds=False, *, warn_on_error=False):
+    """Interpolate PBH fractions for a mass in kg, retaining per-bound status."""
     mC_Msun = (mC_kg * u.kg).to(u.M_sun).value
     
     # Ensure bound_id is a list
@@ -1856,7 +1766,8 @@ def get_pbh_fraction_bounds(Mpbh, bound_id, return_all_bounds=False):
             bounds_values.append(f_at_mC)
             
         except Exception as e:
-            # print(f"Warning: Could not load bound '{bid}': {e}")
+            if warn_on_error:
+                print(f"Warning: Could not load bound '{bid}': {e}")
             result[f'bound_{bid}'] = np.nan
             result[f'status_{bid}'] = "error"
     
@@ -2111,98 +2022,6 @@ def star_number_galactic_bulge(r, M_star=1.0, fraction = 1.0):
 #     pre_factor = ((8/15)  * (M_pbh**2 * M_star**2)) / ((M_star+ M_pbh)**3 * const.c.value**5)
 #     # print('pre factor:', pre_factor)
 #     return pre_factor * (p_e(e) / (e - 1)**3.5) * v_inf**7
-
-# def equation(b, M_pbh, M_star, v_inf):
-#     # Returns positive when GW loss < KE (no capture)
-#     # Returns negative when GW loss > KE (capture possible)
-#     e = eccentricity_original(b, M_pbh, M_star, v_inf) 
-#     # return -delta_E_GW(e, b, M_pbh, M_star, v_inf) + orbital_energy(M_pbh, M_star, v_inf, b, e)
-#     # E_initial = 0.5 * (M_pbh * M_star) / (M_pbh + M_star) * v_inf**2
-#     mu = (M_pbh * M_star) / (M_pbh + M_star)
-#     E_initial = 0.5 * mu * v_inf**2
-#     return -delta_E_GW(e, b, M_pbh, M_star, v_inf) + orbital_energy(M_pbh, M_star, v_inf, b, e)
-
-# def compute_b_max(M_pbh, M_star, v_inf, b_min, limit_in_m):
-#     """
-#     Find maximum b where |GW energy loss| ≥ kinetic energy
-    
-#     At b_min: GW loss is very large (close encounter) → equation < 0
-#     As b increases: GW loss decreases → equation approaches 0 then becomes positive
-    
-#     We want the b where equation = 0 (transition point)
-#     """
-#     e = eccentricity_original(b_min, M_pbh, M_star, v_inf)
-#     # Check if capture is possible at b_min
-#     eq_at_bmin = equation(b_min, M_pbh, M_star, v_inf)
-    
-#     if eq_at_bmin > 0:
-#         # Even at closest approach, GW loss < KE → no capture possible
-#         return b_min
-    
-#     # Find where equation crosses zero (GW loss = KE)
-#     b_guess_max = b_min  # Start with 10x b_min
-    
-#     # Expand search until we bracket the root
-#     while b_guess_max < limit_in_m:
-#         eq_at_bmax = equation(b_guess_max, M_pbh, M_star, v_inf)
-#         # print(f'bmax guess: {b_guess_max}, equation: {eq_at_bmax}')
-#         if eq_at_bmax >= 0:
-#             # Found sign change! equation(b_min) < 0, equation(b_max) > 0
-#             try:
-#                 b_max = brentq(equation, b_min, b_guess_max,
-#                               args=(M_pbh, M_star, v_inf),
-#                               xtol=1e-5, rtol=1e-5)
-#                 # print(f'bmax found: {b_max}')
-#                 return b_max
-#             except ValueError:
-#                 return 0
-        
-#         # Still negative - need larger b
-#         b_guess_max += b_min/100
-        
-
-    
-#     return 0
-
-# def compute_capture_crossec(b_min, b_max):
-#     if b_max <= b_min:
-#         return 0
-#     else:
-#         return np.pi * (b_max**2 - b_min**2)
-    
-# def compute_semimajor_axis(b_ave, M_pbh, M_star, v_inf):
-#     E = equation(b_ave, M_pbh, M_star, v_inf)  # this must be the *post-loss* orbital energy
-#     mu = (M_pbh * M_star) / (M_pbh + M_star)
-
-#     if not np.isfinite(E) or E >= 0:   # not bound
-#         return np.nan, np.nan
-
-#     a = -G * (M_pbh + M_star) * mu / (2.0 * E)
-
-#     # your choice of angular momentum model:
-#     L = mu * b_ave * v_inf
-#     e = eccentricity_v2(E, L, M_pbh, M_star)
-
-#     return a, e
-
-# def orbital_period(m1, m2, semimajax):
-#     # G =  39.4769264 # gravitational constant in AU^3 / (year^2 x Msun) 
-#     # M = (np.asarray(m1) + np.asarray(m2))
-#     # A = np.asarray(semimajax)
-#     # orbitalPeriod = (np.sqrt((4 * np.pi**2 * A**3)) / np.sqrt(G * M)) * 365.25
-#     # m1 = m1 * const.M_sun # units of kg
-#     m1 = m1*(u.kg)
-#     # m2 = m2 * const.M_sun # units of kg
-#     m2 = m2*(u.kg)
-#     A = semimajax * u.au # units of m
-#     A = A.to(u.m)
-#     orbitalPeriod = (np.sqrt((4 * np.pi**2 * A**3)) / np.sqrt(G_UNITS * (m1 + m2))) # units of s
-#     orbitalPeriod = orbitalPeriod.to(u.yr).value
-#     # print('max orbital period in hours:', np.max(orbitalPeriod))
-#     # orbitalPeriod = orbitalPeriod / 24 # units of days
-#     # print('max orbital period in days:', np.max(orbitalPeriod))
-
-#     return orbitalPeriod
 
 
 
