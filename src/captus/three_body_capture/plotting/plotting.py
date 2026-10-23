@@ -209,6 +209,95 @@ class Plots:
             self._save_figure(fig, out, dpi=300)
         return fig
 
+    def plot_metric_wrt_v_bokeh(
+        self,
+        metric_list,
+        metric_ylabel,
+        analysis_name,
+        metric_labels=None,
+        output_path=None,
+        typeplotback=None,
+    ):
+        """Save the production metric-versus-velocity plot as interactive HTML."""
+        from bokeh.models import ColumnDataSource, HoverTool
+        from bokeh.plotting import figure
+        from matplotlib.colors import to_hex
+        from tdpy.plotting import save_bokeh_html
+
+        static_figure = self.plot_metric_wrt_v(
+            metric_list,
+            metric_ylabel,
+            analysis_name,
+            metric_labels=metric_labels,
+            save=False,
+            typeplotback=typeplotback,
+        )
+        try:
+            axis = static_figure.axes[0]
+            interactive_figure = figure(
+                title=f"{analysis_name} metrics versus velocity",
+                width=720,
+                height=420,
+                sizing_mode="stretch_width",
+                x_axis_label=axis.get_xlabel(),
+                y_axis_label=axis.get_ylabel(),
+                x_axis_type=axis.get_xscale(),
+                y_axis_type=axis.get_yscale(),
+                tools="pan,wheel_zoom,box_zoom,reset,save",
+            )
+            renderers = []
+            for index, line in enumerate(axis.lines):
+                label = (
+                    metric_labels[index]
+                    if metric_labels and index < len(metric_labels) and metric_labels[index]
+                    else metric_list[index]
+                )
+                source = ColumnDataSource({
+                    "velocity_kms": np.asarray(line.get_xdata(), dtype=float),
+                    "metric": np.asarray(line.get_ydata(), dtype=float),
+                    "label": [label] * len(line.get_xdata()),
+                })
+                color = to_hex(line.get_color())
+                interactive_figure.line(
+                    "velocity_kms",
+                    "metric",
+                    source=source,
+                    color=color,
+                    line_width=2,
+                    line_dash="dashed",
+                    legend_label=label,
+                )
+                renderers.append(interactive_figure.scatter(
+                    "velocity_kms",
+                    "metric",
+                    source=source,
+                    color=color,
+                    marker="circle",
+                    size=7,
+                ))
+            interactive_figure.legend.location = "top_right"
+            interactive_figure.legend.click_policy = "hide"
+            interactive_figure.add_tools(HoverTool(
+                renderers=renderers,
+                tooltips=[
+                    ("Metric", "@label"),
+                    ("Velocity [km s^-1]", "@velocity_kms{0.00}"),
+                    (metric_ylabel, "@metric"),
+                ],
+            ))
+            interactive_figure.grid.visible = False
+            path = Path(output_path or Path(self.plots_dir) / (
+                f"{analysis_name}_{'_'.join(metric_list)}_vs_v.html"
+            ))
+            return save_bokeh_html(
+                interactive_figure,
+                path,
+                title=f"{analysis_name} metrics versus velocity",
+                typeplotback=typeplotback,
+            )
+        finally:
+            plt.close(static_figure)
+
     @_themed_plot
     def plot_metric_wrt_v_twinaxis(self, metric_lists, metric_ylabels, analysis_name, metric_masks=None, metric_labels=None, fig_size=None, save=True):
         """

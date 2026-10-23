@@ -61,11 +61,33 @@ python -m pip install -e .
 
 Set `CAPTUS_PATH` to the checkout directory when Captus is used from another location. If it is unset, Captus uses its checkout root; the legacy `CAPTUS_REPO_ROOT` remains a fallback. Keep local inputs in the ignored `data/` directory and generated figures directly in the ignored `visuals/` directory.
 
-TDpy supplies shared plot styling and is installed with Captus. Add the
-optional `corner` package for corner plots with this command.
+TDpy supplies shared plot styling and is installed with Captus. Install the
+optional plotting tools, including `corner` and Bokeh, with this command.
 
 ```bash
 python -m pip install -e '.[plotting]'
+```
+
+For interactive three-body results, `Plots.plot_metric_wrt_v_bokeh()` writes a
+standalone HTML version of the metric-versus-velocity plot with hover values,
+pan and zoom tools, and a legend that can hide individual series. Pass
+`output_path` to place the HTML figure in a chosen `visuals/` directory. It
+uses the same analysis values and exclusions as `plot_metric_wrt_v()`.
+After `analysis_list_a` has been assembled in
+`notebooks/threebody_capture_paper.ipynb`, create an interactive capture
+cross-section plot with this call.
+
+```python
+from captus.paths import get_visuals_path
+
+plotobj = pl.Plots(name="Sun_Jupiter_Set_A_paper", analysis=analysis_list_a)
+plotobj.plot_metric_wrt_v_bokeh(
+	metric_list=["dsigma_au2"],
+	metric_ylabel=r"$\sigma_{cap}$ [AU$^2$]",
+	analysis_name=analysis_list_a[0].name,
+	metric_labels=[r"$\sigma_{cap}$"],
+	output_path=get_visuals_path() / "captus_sun_jupiter_capture_cross_section.html",
+)
 ```
 
 Plots use white backgrounds with black axes by default. The GW grid functions

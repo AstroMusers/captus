@@ -149,3 +149,41 @@ def test_three_body_plot_theme_restores_settings_after_error(plot_manager):
         assert dict(plt.rcParams) == original
         assert plot_background_colors() == ('white', 'black')
     plt.close('all')
+
+
+def test_three_body_bokeh_plot_uses_pipeline_values_and_writes_html(plot_manager, tmp_path, monkeypatch):
+    from tdpy import plotting as tdpy_plotting
+
+    pytest.importorskip('bokeh')
+    original_data = plot_manager.analysis_dicts.copy()
+    output_path = tmp_path / 'metric_vs_velocity.html'
+    captured = {}
+    save_bokeh_html = tdpy_plotting.save_bokeh_html
+
+    def capture_figure(figure, path, **kwargs):
+        captured['sources'] = [
+            renderer.data_source.data
+            for renderer in figure.renderers
+            if hasattr(renderer, 'data_source')
+        ]
+        return save_bokeh_html(figure, path, **kwargs)
+
+    monkeypatch.setattr(tdpy_plotting, 'save_bokeh_html', capture_figure)
+
+    result = plot_manager.plot_metric_wrt_v_bokeh(
+        ['metric'],
+        'Metric',
+        'test',
+        metric_labels=['Measured metric'],
+        output_path=output_path,
+    )
+
+    assert result == output_path
+    html = output_path.read_text(encoding='utf-8')
+    assert 'Bokeh' in html
+    assert 'Measured metric' in html
+    assert str(tmp_path) not in html
+    assert '/Users/' not in html
+    np.testing.assert_array_equal(captured['sources'][0]['velocity_kms'], [100, 200])
+    np.testing.assert_array_equal(captured['sources'][0]['metric'], [1, 2])
+    assert plot_manager.analysis_dicts == original_data
