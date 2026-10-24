@@ -26,7 +26,7 @@ dependencies = [
     "PyYAML",
     "pytextable",
     "seaborn",
-    "tdpy",
+    "tdpy @ git+https://github.com/tansudaylan/tdpy.git@35df1703c6b63d6a62f7d44b12cf5928b5d355ed",
 ]
 
 [project.scripts]
@@ -41,6 +41,7 @@ dev = [
 plotting = ["corner", "bokeh"]
 
 inference = [
+  "chalcedon @ git+https://github.com/tansudaylan/chalcedon.git@7f904b64b854fe3bee63af515317723ed49c9b06",
   "pcat @ git+https://github.com/tansudaylan/pcat.git",
   "MulensModel>=3.12.0",
 ]
