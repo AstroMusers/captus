@@ -59,7 +59,7 @@ conda activate captus
 python -m pip install -e .
 ```
 
-Set `CAPTUS_PATH` to the checkout directory when Captus is used from another location. If it is unset, Captus uses its checkout root; the legacy `CAPTUS_REPO_ROOT` remains a fallback. Keep local inputs in the ignored `data/` directory and generated figures directly in the ignored `visuals/` directory.
+Set `CAPTUS_PATH` to the checkout directory when Captus is used from another location. If it is unset, Captus uses its checkout root. The legacy `CAPTUS_REPO_ROOT` remains a fallback. Keep local inputs in the ignored `data/` directory and generated figures directly in the ignored `visuals/` directory.
 
 TDpy supplies shared plot styling and is installed with Captus. Install the
 optional plotting tools, including `corner` and Bokeh, with this command.

@@ -34,7 +34,14 @@ def coalescence_time(v_inf, b, b_max, M_pbh, M_star): #Radial 2025
     # nu = mu / (M_pbh + M_star)
     # b_max = (19*np.pi*(nu)/3)**(1/7) * (G * (M_pbh + M_star)/v_inf**2) * (const.c.value/v_inf)**(5/7) # * const.G.value**(2/7) * const.c.value**(-5/7)
     # b = b_prop * b_max
-    T = (1.08*u.day).to(u.s).value * ((M_pbh + M_star)/Msun) * ((v_inf/1e5)**-3) * np.sqrt((b/b_max)**21 / (1 - (b/b_max)**7))
+    if b_max <= 0 or b < 0:
+        raise ValueError("Impact parameters must satisfy b_max > 0 and b >= 0")
+    impact_ratio = b / b_max
+    if impact_ratio > 1:
+        raise ValueError("Coalescence time is defined only for b <= b_max")
+    if impact_ratio == 1:
+        return np.inf
+    T = (1.08*u.day).to(u.s).value * ((M_pbh + M_star)/Msun) * ((v_inf/1e5)**-3) * np.sqrt(impact_ratio**21 / (1 - impact_ratio**7))
     M_total = M_pbh + M_star
     # return (19*np.pi/85) * (G * M_total) / (v_inf**3) * \
     #        np.sqrt((b/b_max)**21 / (1 - (b/b_max)**7))
@@ -51,15 +58,8 @@ def orbital_energy(M_pbh, M_star, v_inf, b, e):
     return KE + PE + LE
 
 def orbital_momentum(e, mu, b, v_inf):
-    phi = np.arccos(-1/e)
-    R = b * np.sqrt((e**2 - 1))
-    # print('R:', R)
-    r = R / (1 + e * np.cos(phi))
-    if r == np.inf:
-        return 0, r
     L = mu * b * v_inf
-    # print('L:', L, 'r:', r)
-    return L, r
+    return L, np.inf
 
 def r_minimum(M_star, M_pbh, v_inf, e):
     return G * (M_star + M_pbh) * (e-1) / (v_inf**2)

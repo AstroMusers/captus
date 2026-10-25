@@ -88,6 +88,9 @@ class GWCapture:
             for i in range(self.gridsize):
                 v = self.v_inf_values[i]
                 b_ave = (self.b_min_values[i, j] + self.b_max_values[i, j]) / 2
+                b_max = self.b_max_values[i, j]
+                if not np.isfinite(b_max) or b_max <= 0 or b_ave >= b_max:
+                    continue
                 a0, e0 = compute_semimajor_axis(
                     (b_ave), 
                     self.M_grid[i, j],
@@ -98,7 +101,7 @@ class GWCapture:
                 if (not np.isfinite(a0)) or (not np.isfinite(e0)) or (a0 <= 0) or (e0 < 0) or (e0 >= 1):
                     continue
 
-                t_sec = coalescence_time(self.V_grid[i, j], b_ave, self.b_max_values[i, j], self.M_grid[i, j], self.Ms)  # returns seconds (SI)
+                t_sec = coalescence_time(self.V_grid[i, j], b_ave, b_max, self.M_grid[i, j], self.Ms)  # returns seconds (SI)
                 t_yr = (t_sec * u.s).to(u.yr).value
                 coaltime[i, j] = t_yr
 
@@ -122,12 +125,16 @@ class GWCapture:
             for i in range(gridsize):
                 # print(m, M_star, R_star, v)
                 v = self.v_inf_values[i]
-                lifetime = self.coalescence_time[i, j]
-                term_rate = 1 / lifetime
-                v_km_s = (v * u.m / u.s).to(u.km / u.s).value
-                f = galactic_dm_maxwell_dist(v=v_km_s, r=self.r)
-                v_inf_auyr = (v * u.m / u.s).to(u.au / u.yr).value
-                rate =  f * self.cross_section_grid[i, j] * v_inf_auyr / term_rate
+                cross_section = self.cross_section_grid[i, j]
+                if cross_section <= 0:
+                    rate = 0.0
+                else:
+                    lifetime = self.coalescence_time[i, j]
+                    term_rate = 1 / lifetime
+                    v_km_s = (v * u.m / u.s).to(u.km / u.s).value
+                    f = galactic_dm_maxwell_dist(v=v_km_s, r=self.r)
+                    v_inf_auyr = (v * u.m / u.s).to(u.au / u.yr).value
+                    rate = f * cross_section * v_inf_auyr / term_rate
                 y_vals.append(rate)
                 x_vals.append(v)
                 n_eqs_grid[i, j] = rate
