@@ -188,3 +188,67 @@ def test_pbh_tools_loader_reads_configured_checkout(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(calc.importlib.util, "spec_from_file_location", lambda *args: None)
     with pytest.raises(ImportError, match="Could not create import spec"):
         calc._load_pbhbounds_tools(tmp_path)
+
+
+@pytest.mark.parametrize('paired', [False, True])
+@pytest.mark.parametrize('number_shells', [1, 3])
+def test_shell_sum_uses_fresh_merged_analyses_at_each_radius(monkeypatch, paired, number_shells):
+    from captus.utils.misc import get_shell_sum_Neq_and_params
+
+    class ShellAnalysis:
+        def __init__(self, amplitude):
+            self.amplitude = amplitude
+            self.results_dictionary = {'original': amplitude}
+
+        def merged_copy_for_error_analysis(self, other):
+            return ShellAnalysis(self.amplitude + other.amplitude)
+
+        def set_bootstrap(self, enabled):
+            assert enabled is False
+
+        def update_results_dictionary(self, radius):
+            self.results_dictionary = {'total_pbh_neq_n': {
+                'Neq_pbh_f_full': self.amplitude * radius,
+                'Neq_pbh_f_bound': 0.5 * self.amplitude * radius,
+                'number_density_in_range_kpc3': self.amplitude + radius,
+            }}
+
+    def star_number(radius, width, M_star, fraction=1.0):
+        return 10.0 * radius * width * fraction / M_star
+
+    monkeypatch.setattr(calc, 'star_number_at_r', star_number)
+    left = [ShellAnalysis(1.0), ShellAnalysis(2.0)]
+    right = [ShellAnalysis(3.0), ShellAnalysis(5.0)]
+    amplitudes = np.array([4.0, 7.0])
+    analysis = (left, right) if paired else [ShellAnalysis(value) for value in amplitudes]
+    edges = np.array([1.0, 2.0, 4.0, 7.0])[:number_shells + 1]  # [kpc]
+    original_edges = edges.copy()
+    centers = 0.5 * (edges[:-1] + edges[1:])  # [kpc]
+    widths = np.diff(edges)  # [kpc]
+    mass = 2.0  # [solar mass]
+    fraction = 0.25
+
+    all_results, integrated = get_shell_sum_Neq_and_params(
+        analysis, edges, M_star=mass, fraction=fraction,
+    )
+
+    star_counts = 10.0 * centers * widths / mass
+    assert set(all_results) == set(centers)
+    assert set(integrated) == {0, 1}
+    for radius, count in zip(centers, star_counts):
+        shell = all_results[radius]
+        np.testing.assert_array_equal(shell['N_eq_full'], amplitudes * radius)
+        np.testing.assert_array_equal(shell['N_eq_pbh_bound'], 0.5 * amplitudes * radius)
+        np.testing.assert_array_equal(shell['n_pbh_density'], amplitudes + radius)
+        np.testing.assert_array_equal(shell['N_eq_full_stars'], amplitudes * radius * count)
+    for index, amplitude in enumerate(amplitudes):
+        expected = np.sum(amplitude * centers * star_counts)
+        assert integrated[index]['N_eq_full_stars_integrated'] == expected
+        assert integrated[index]['Neq_pbh_bound_stars_integrated'] == 0.5 * expected
+        assert integrated[index]['N_eq_full_alike_integrated'] == fraction * expected
+        assert integrated[index]['Neq_pbh_bound_alike_integrated'] == 0.5 * fraction * expected
+        assert integrated[index]['N_stars_total_integrated'] == np.sum(star_counts)
+    if paired:
+        for original in left + right:
+            assert original.results_dictionary == {'original': original.amplitude}
+    np.testing.assert_array_equal(edges, original_edges)

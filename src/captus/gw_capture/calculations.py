@@ -4,6 +4,7 @@ import captus.utils.misc as misc
 from astropy import constants as const
 import astropy.units as u
 from captus.utils.calculations import (
+    annular_cross_section,
     get_Neq_at_r_f,
     integrate_gauss_legendre,
     orbital_period as _orbital_period_si,
@@ -145,8 +146,7 @@ def compute_b_max(M_pbh, M_star, v_inf, b_min, limit_in_m):
 def compute_capture_crossec(b_min, b_max):
     if b_max <= b_min:
         return 0
-    else:
-        return np.pi * (b_max**2 - b_min**2)
+    return annular_cross_section(b_min, b_max)
     
 def compute_semimajor_axis(b_ave, M_pbh, M_star, v_inf):
     E = equation(b_ave, M_pbh, M_star, v_inf)  # this must be the *post-loss* orbital energy

@@ -24,13 +24,19 @@ also calculates the equilibrium-abundance grid.
 
 `paper_microlensing_pcat.py` uses MulensModel to generate matched single- and
 binary-lens light curves, then uses PCAT to compare their posterior model
-probabilities and sample the binary-lens parameters. The data are synthetic,
-the event trajectory is fixed in this demonstration, and the output is not a
-Roman detection forecast. Install the optional dependencies from the Captus
-repository root with `python -m pip install -e '.[inference]'`. Run the short,
+probabilities and sample the binary-lens parameters. The light curves are
+synthetic, and the event trajectory is fixed. A Roman detection yield would
+also require a target population and observing strategy. Install the optional
+dependencies from the Captus repository root with `python -m pip install -e '.[inference]'`. Run the short,
 121-epoch example with `python examples/paper_microlensing_pcat.py --smoke`.
 The default run uses a 72-day baseline at 15-minute cadence. Its JSON summary
-includes evidence Monte Carlo errors and PCAT convergence diagnostics.
+reports the relative Monte Carlo error for each log-evidence estimate, which
+describes numerical uncertainty in the importance-sampling calculation. For
+each posterior chain, it records the largest R-hat and smallest effective
+sample size across parameters. R-hat compares between-chain and within-chain
+spread, while effective sample size discounts correlated draws. PCAT's
+convergence flag uses finite values, R-hat at most 1.05, and effective sample
+size of at least 200 for every parameter.
 
 From the paper directory, `python reproduce_paper.py --smoke` writes the
 Milky Way environment table, an 8-by-8 neutron-star GW-capture figure, the two

@@ -131,6 +131,7 @@ def test_initialization_sets_system(monkeypatch):
 
     assert sim.muA == 10.0
     assert sim.muB == 10.0
+    assert sim.areaB == pytest.approx(25.0 * np.pi)
     assert sim.rClose == 0.25
     assert sim.aC == 3.75
     assert sim.vEscape == 1.5

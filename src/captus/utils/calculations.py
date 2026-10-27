@@ -8,18 +8,26 @@ from scipy.optimize import brentq, minimize_scalar
 from scipy.spatial.transform import Rotation
 from astropy import units as u
 import os
+from tdpy.numerics import weighted_quantile as _weighted_quantile
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 G = const.G.value
 G_UNITS = const.G
+_G_KPC3_PER_MSUN_YR2 = const.G.to(u.kpc**3 / (u.M_sun * u.yr**2))  # [kpc^3 / (M_sun yr^2)]
+_MILKY_WAY_BULGE_MASS_SOLAR = 1.55e10  # [M_sun], Bland-Hawthorn 2016
+_MILKY_WAY_BULGE_SCALE_RADIUS_KPC = 0.70  # [kpc]
 
 def schwarzchild_radius(mass):
     """Calculate the Schwarzschild radius for a given mass.
 
-    Parameters:
-    mass (float): Mass in kilograms.
+    Parameters
+    ----------
+    mass : float
+        Mass (kg).
 
-    Returns:
-    float: Schwarzschild radius in meters.
+    Returns
+    -------
+    float
+        Schwarzschild radius (m).
     """ # Gravitational constant in m^3 kg^-1 s^-2
 
     return 2 * G * mass / const.c.value**2
@@ -27,110 +35,131 @@ def schwarzchild_radius(mass):
 def semimajor_axis(period, mass1, mass2):
     """Calculate the semi-major axis of a binary system.
 
-    Parameters:
-    period (float): Orbital period in seconds.
-    mass1 (float): Mass of the first body in kilograms.
-    mass2 (float): Mass of the second body in kilograms.
+    Parameters
+    ----------
+    period : float
+        Orbital period (s).
+    mass1, mass2 : float
+        Masses of the two bodies (kg).
 
-    Returns:
-    float: Semi-major axis in meters.
+    Returns
+    -------
+    float
+        Semi-major axis (m).
     """
     return (G * (mass1 + mass2) * (period / (2 * pi))**2)**(1/3)
 
 def orbital_period(semimajor_axis, mass1, mass2):
     """Calculate the orbital period of a binary system.
 
-    Parameters:
-    semimajor_axis (float): Semi-major axis in meters.
-    mass1 (float): Mass of the first body in kilograms.
-    mass2 (float): Mass of the second body in kilograms.
+    Parameters
+    ----------
+    semimajor_axis : float
+        Semi-major axis (m).
+    mass1, mass2 : float
+        Masses of the two bodies (kg).
 
-    Returns:
-    float: Orbital period in seconds.
+    Returns
+    -------
+    float
+        Orbital period (s).
     """
     return 2 * pi * np.sqrt(semimajor_axis**3 / (G * (mass1 + mass2)))
 
 def hill_radius(semimajor_axis, mass1, mass2, eccentricity=0):
     """Calculate the Hill radius of a body in a binary system.
 
-    Parameters:
-    semimajor_axis (float): Semi-major axis of the orbit in meters.
-    mass1 (float): Mass of the primary body in kilograms.
-    mass2 (float): Mass of the secondary body in kilograms.
-    eccentricity (float): Orbital eccentricity (default is 0 for circular orbits).
+    Parameters
+    ----------
+    semimajor_axis : float
+        Orbital semi-major axis (m).
+    mass1, mass2 : float
+        Primary and secondary masses (kg).
+    eccentricity : float, default=0
+        Orbital eccentricity.
 
-    Returns:
-    float: Hill radius in meters.
+    Returns
+    -------
+    float
+        Hill radius (m).
     """
     return semimajor_axis * (1 - eccentricity) * (mass2 / (3 * (mass1 + mass2)))**(1/3)
 
 def collision_cross_section(rB, v_escB, v1prime):
     """Calculate the collision cross-section.
 
-    Parameters:
-    rB (float): Radius of body B in meters.
-    v_escB (float): Escape velocity from body B in m/s.
-    v1prime (float): Incoming velocity in Body B frame in m/s.
+    Parameters
+    ----------
+    rB : float
+        Radius of body B (m).
+    v_escB : float
+        Escape speed from body B (m/s).
+    v1prime : float
+        Incoming speed in body B's frame (m/s).
 
-    Returns:
-    float: Collision cross-section in m^2.
+    Returns
+    -------
+    float
+        Collision cross-section (m^2).
     """
-    return pi * rB**2 * (1 + (v_escB / v1prime)**2)
+    return area_of_circle(rB) * (1 + (v_escB / v1prime)**2)
 
 def area_of_circle(radius):
     """Calculate the area of a circle given its radius.
 
-    Parameters:
-    radius (float): Radius of the circle.
+    Parameters
+    ----------
+    radius : float
+        Circle radius.
 
-    Returns:
-    float: Area of the circle.
+    Returns
+    -------
+    float
+        Circle area.
     """
     return pi * radius**2
 
 def potential_energy(muA, rAB, muB, rClose):
-    """
-    Potential energy U.
+    """Return the specific gravitational potential for two separations.
 
     Parameters
     ----------
     muA : float
-        Reduced mass associated with body A (μ_A).
-    muB : float
-        Reduced mass associated with body B (μ_B).
+        Standard gravitational parameter for the first pair (m^3/s^2).
     rAB : float
-        Separation between bodies A and B.
-    rclose : float
-        Closest approach distance.
+        Separation for the first pair (m).
+    muB : float
+        Standard gravitational parameter for the second pair (m^3/s^2).
+    rClose : float
+        Separation for the second pair (m).
 
     Returns
     -------
     float
-        Potential energy U.
+        Specific potential (m^2/s^2).
     """
     return -(muA / rAB) - (muB / rClose)
 
 def sigma_cap(v1Mag, v1primeMag, vBMag, v_esc, muB):
-    """
-    Capture cross-section σ_cap(v1).
+    """Return the capture cross-section for the supplied encounter speeds.
 
     Parameters
     ----------
-    v1 : float
-        Incoming velocity.
-    v1_prime : float
-        Incoming velocity in Body B frame.
-    vB : float
-        Orbital velocity of body B.
-    vesc : float
-        Escape velocity of body A or system.
+    v1Mag : float
+        Incoming speed (m/s).
+    v1primeMag : float
+        Incoming speed in body B's frame (m/s).
+    vBMag : float
+        Orbital speed of body B (m/s).
+    v_esc : float
+        Escape speed used by the capture model (m/s).
     muB : float
-        Reduced mass associated with body B (μ_B).
+        Gravitational parameter associated with body B (m^3/s^2).
 
     Returns
     -------
     float
-        σ_cap(v1)
+        Capture cross-section (m^2).
     """
     numerator = np.pi * muB**2 * ((v1primeMag**2 - vBMag**2)**2 - v_esc**4)
     denominator = (v1Mag**2 - v_esc**2)**2 * v1primeMag**4
@@ -164,22 +193,17 @@ def sigma_cap(v1Mag, v1primeMag, vBMag, v_esc, muB):
 #     return sigma_cap_val / kappa
 
 def sigma_collision(R, b, bmin, rmin):
-    """
-    Collision cross-section σ_collision(v1).
+    """Evaluate the geometric collision-area expression from length inputs.
 
     Parameters
     ----------
-    v1 : float
-        Incoming velocity.
-    muB : float
-        Reduced mass associated with body B (μ_B).
-    r_close : float
-        Closest approach distance.
+    R, b, bmin, rmin : float
+        Lengths expressed in a common unit.
 
     Returns
     -------
     float
-        σ_collision(v1)
+        Cross-sectional area in the square of that unit.
     """
     sigma_int_1 = -(0.5*(-b + R + bmin) * (b + R - bmin) * (b - R + bmin) * (b + R + bmin))**0.5
     sigma_int_2 = R**2 * np.arccos((b**2 + R**2 - bmin**2) / (2*b*R))
@@ -271,44 +295,44 @@ def standard_gravitational_parameter(mass1, mass2, approx=False):
         return G * (mass1 + mass2)
 
 def v_esc(muA, rAB):
-    """
-    Escape velocity v_esc.
+    """Return escape speed at separation rAB.
 
     Parameters
     ----------
-    mA : float
-        Mass of body A.
+    muA : float
+        Standard gravitational parameter (m^3/s^2).
     rAB : float
-        Separation between bodies A and B.
+        Separation between bodies A and B (m).
 
     Returns
     -------
     float
-        v_esc
+        Escape speed (m/s).
     """
 
     return np.sqrt(2 * muA / rAB)
 
 
 def r_close(epsilon, muA, muB, rAB, approx=False):
-    """
-    Closest approach distance r_close (exact).
+    """Return the close-approach distance under the selected approximation.
 
     Parameters
     ----------
     epsilon : float
-        Energy dissipation parameter.
+        Dimensionless energy-dissipation parameter.
     muA : float
-        Reduced mass associated with body A (μ_A).
+        Standard gravitational parameter for the first pair (m^3/s^2).
     muB : float
-        Reduced mass associated with body B (μ_B).
+        Standard gravitational parameter for the second pair (m^3/s^2).
     rAB : float
-        Separation between bodies A and B.
+        Initial separation (m).
+    approx : bool
+        Whether to use the approximate expression.
 
     Returns
     -------
     float
-        r_close
+        Close-approach distance (m).
     """
     if approx:
         return rAB * (epsilon * muB / muA)**(1/3)
@@ -316,22 +340,21 @@ def r_close(epsilon, muA, muB, rAB, approx=False):
         return rAB * (epsilon * muB / (2 * muA))**(1/3)
 
 def r_min(muB, b, v1_prime):
-    """
-    Minimum approach distance b_min.
+    """Return closest-approach distance for the incoming trajectory.
 
     Parameters
     ----------
-    muA : float
-        Reduced mass associated with body A (μ_A).
+    muB : float
+        Standard gravitational parameter for body B (m^3/s^2).
     b : float
-        Impact parameter.
+        Impact parameter (m).
     v1_prime : float
-        Incoming velocity in Body B frame.
+        Incoming speed in body B's frame (m/s).
 
     Returns
     -------
     float
-        r_min
+        Closest-approach distance (m).
     """
 
     e1_prime = np.sqrt(1 + (b**2 * v1_prime**4) / muB**2)
@@ -364,45 +387,46 @@ def r_AB_vec(rAB, lambda_1):
     return rABVec
 
 def b_min(muB, rB, v1_prime):
-    """
-    Minimum impact parameter b_min.
+    """Return the grazing impact-parameter threshold for body B.
 
     Parameters
     ----------
     muB : float
-        Reduced mass associated with body B (μ_B).
+        Standard gravitational parameter for body B (m^3/s^2).
     rB : float
-        Radius of body B.
+        Radius of body B (m).
     v1_prime : float
-        Incoming velocity in Body B frame.
+        Incoming speed in body B's frame (m/s).
 
     Returns
     -------
     float
-        b_min
+        Impact parameter (m).
     """
     b_min = np.sqrt(2*muB*rB + (rB*v1_prime)**2) / v1_prime
 
     return b_min
 
 def v_1_mag(v_inf, muA, muB, rAB, rClose):
-    """
-    Incoming velocity v1.
+    """Return incoming speed at the encounter.
 
     Parameters
     ----------
     v_inf : float
-        Velocity at infinity.
-    mA : float
-        Mass of body A.
+        Incoming speed at infinity (m/s).
+    muA : float
+        Standard gravitational parameter for the first pair (m^3/s^2).
+    muB : float
+        Standard gravitational parameter for the second pair (m^3/s^2).
     rAB : float
-        Separation between bodies A and B.
-
+        Separation for the first pair (m).
+    rClose : float
+        Close-approach distance for the second pair (m).
 
     Returns
     -------
     float
-        v1
+        Incoming speed at the encounter (m/s).
     """
 
     term1 = v_inf**2 + (2 * muA / rAB)
@@ -410,21 +434,19 @@ def v_1_mag(v_inf, muA, muB, rAB, rClose):
     return np.sqrt(term1 + term2)
 
 def v_1_vec(v1Mag, beta_1):
-    """
-    Incoming velocity v1.
+    """Return the incoming velocity vector.
+
     Parameters
     ----------
-    v1_mag : float
-        Incoming velocity magnitude.
-    lambda_1 : float
-        Orbital phase angle of Body B (determines approach direction).
+    v1Mag : float
+        Incoming speed (m/s).
     beta_1 : float
-        Out-of-plane angle (polar angle from xy-plane).
+        Out-of-plane angle (radians).
     
     Returns
     -------
-    float
-        v1
+    numpy.ndarray
+        Incoming velocity vector (m/s).
     """
     # v1 direction set by (β1, λ1) as in Lehmann fig. 2
     v1_vec = v1Mag * np.array([
@@ -435,65 +457,55 @@ def v_1_vec(v1Mag, beta_1):
     return v1_vec
 
 def v_1_prime_mag(v1primeVec):
-    """
-    Magnitude of incoming velocity in Body B frame |v1'|.
+    """Return the incoming speed in body B's frame.
+
     Parameters
     ----------
-    v1_mag : float
-        Incoming velocity magnitude.
-    vB_mag : float
-        Orbital velocity magnitude of body B.
-    lambda_1 : float
-        Scattering angle.
-    beta_1 : float
-        Impact parameter angle. 
+    v1primeVec : numpy.ndarray
+        Incoming velocity vector in body B's frame (m/s).
     Returns
     -------
     float
-        |v1'|
+        Speed in body B's frame (m/s).
     """
     return np.linalg.norm(v1primeVec)
 
 def v_1_prime_vec(v1Vec, vBVec):
-    """
-    Incoming velocity in Body B frame v1'.
+    """Return the incoming velocity relative to body B.
+
     Parameters
     ----------
-    v1_mag : float
-        Incoming velocity magnitude.
-    vB_mag : float
-        Orbital velocity magnitude of body B.
-    lambda_1 : float
-        Scattering angle.
-    beta_1 : float
-        Impact parameter angle. 
+    v1Vec : numpy.ndarray
+        Incoming velocity in the system frame (m/s).
+    vBVec : numpy.ndarray
+        Orbital velocity of body B (m/s).
     Returns
     -------
-    float
-        v1'
+    numpy.ndarray
+        Incoming velocity in body B's frame (m/s).
     """
     v1_prime_vec = v1Vec - vBVec
     return v1_prime_vec
 
 def v_2_prime_vec(v1primeVec, v1primeMag, muB, b, phi):
-    """
-    Outgoing velocity v2.
+    """Return the outgoing velocity in body B's frame after scattering.
+
     Parameters
     ----------
-    v1primeVec : float
-        Incoming velocity vector in Body B frame.
+    v1primeVec : numpy.ndarray
+        Incoming velocity vector in body B's frame (m/s).
     v1primeMag : float
-        Magnitude of incoming velocity in Body B frame.
+        Incoming speed in body B's frame (m/s).
     muB : float
-        Reduced mass associated with body B (μ_B).
-    vB : float
-        Orbital velocity of body B.
+        Gravitational parameter associated with body B (m^3/s^2).
     b : float
-        Impact parameter. 
+        Impact parameter (m).
+    phi : float
+        Impact-parameter angle (radians).
     Returns
     -------
-    float
-        v2
+    numpy.ndarray
+        Outgoing velocity in body B's frame (m/s).
     """
 
     v1prime_vec = v1primeVec.copy()
@@ -531,38 +543,34 @@ def v_2_prime_vec(v1primeVec, v1primeMag, muB, b, phi):
     return term1 + term2
 
 def v_2_prime_mag(v2primeVec):
-    """
-    Magnitude of outgoing velocity in Body B frame |v2'|.
+    """Return the outgoing speed in body B's frame.
+
     Parameters
     ----------
-    v2primeMag : float
-        Magnitude of outgoing velocity in Body B frame.
-    muB : float
-        Reduced mass associated with body B (μ_B).
-    b : float
-        Impact parameter. 
+    v2primeVec : numpy.ndarray
+        Outgoing velocity vector in body B's frame (m/s).
 
     Returns
     -------
     float
-        |v2'|
+        Outgoing speed in body B's frame (m/s).
     """
     return np.linalg.norm(v2primeVec)
 
 def v_2_vec(v2primeVec, vBVec):
-    """
-    Outgoing velocity in Body B frame v2'.
+    """Return the outgoing velocity in the system frame.
+
     Parameters
     ----------
-    v2Vec : float
-        Outgoing velocity vector.
-    vBVec : float
-        Orbital velocity vector of body B.
+    v2primeVec : numpy.ndarray
+        Outgoing velocity in body B's frame (m/s).
+    vBVec : numpy.ndarray
+        Orbital velocity of body B (m/s).
 
     Returns
     -------
-    float
-        v2'
+    numpy.ndarray
+        Outgoing velocity in the system frame (m/s).
     """
     v2_vec = v2primeVec + vBVec
     return v2_vec
@@ -572,12 +580,12 @@ def v_2_mag(v2Vec):
     Magnitude of outgoing velocity |v2|.
     Parameters
     ----------
-    v2Vec : float
-        Outgoing velocity vector.
+    v2Vec : numpy.ndarray
+        Outgoing velocity vector (m/s).
     Returns
     -------
     float
-        |v2|
+        Outgoing speed (m/s).
     """
     return np.linalg.norm(v2Vec)
 
@@ -586,37 +594,33 @@ def deflection_angle(cos_psi):
     return np.arccos(np.clip(cos_psi, -1, 1))
 
 def cos_psi(muB, b, v1primeMag):
-    """
-    Cosine of deflection angle ψ.
+    """Return the cosine of the deflection angle.
 
     Parameters
     ----------
     muB : float
-        Reduced mass associated with body B (μ_B).
+        Gravitational parameter associated with body B (m^3/s^2).
     b : float
-        Impact parameter.
+        Impact parameter (m).
     v1primeMag : float
-        Magnitude of incoming velocity in Body B frame.
+        Incoming speed in body B's frame (m/s).
 
     Returns
     -------
     float
-        cos(ψ)
+        Cosine of the deflection angle.
     """
     return (b**2 * v1primeMag**4 - muB**2)/(b**2 * v1primeMag**4 + muB**2)
 
 def sin_psi(cos_psi, v1primeVec):
-    """
-    Sine of deflection angle ψ.
+    """Return the sine of the deflection angle from its cosine.
 
     Parameters
     ----------
-    muB : float
-        Reduced mass associated with body B (μ_B).
-    b : float
-        Impact parameter.
-    v1primeMag : float
-        Magnitude of incoming velocity in Body B frame.
+    cos_psi : float or numpy.ndarray
+        Cosine of the deflection angle.
+    v1primeVec : numpy.ndarray
+        Incoming velocity in body B's frame, retained for call compatibility.
 
     Returns
     -------
@@ -634,120 +638,111 @@ def v_B_vec(vBMag, lambda_1):
     Parameters
     ----------
     vBMag : float
-        Orbital velocity magnitude of body B.
+        Orbital speed of body B (m/s).
     lambda_1 : float
-        Orbital phase angle of Body B.
+        Orbital phase angle of body B (radians).
 
     Returns
     -------
-    float
-        vB
+    numpy.ndarray
+        Orbital velocity vector of body B (m/s), in the orbital plane.
     """
     vBVec = vBMag * np.array([np.cos(lambda_1), np.sin(lambda_1), np.zeros_like(lambda_1)])
     return vBVec
 
 def U(muA, muB, rAB, rClose):
-    """
-    Potential energy U.
+    """Preserve the historical argument order for ``potential_energy``.
 
     Parameters
     ----------
     muA : float
-        Reduced mass associated with body A (μ_A).
+        Standard gravitational parameter for the first pair (m^3/s^2).
     muB : float
-        Reduced mass associated with body B (μ_B).
+        Standard gravitational parameter for the second pair (m^3/s^2).
     rAB : float
-        Separation between bodies A and B.
-    rclose : float
-        Closest approach distance.
+        Separation for the first pair (m).
+    rClose : float
+        Separation for the second pair (m).
 
     Returns
     -------
     float
-        U parameter
+        Specific potential (m^2/s^2).
     """
-    U  = -(muA / rAB) - (muB / rClose)
-
-    return U
+    return potential_energy(muA, rAB, muB, rClose)
 
 def specific_E2(v2Mag, U):
-    """
-    Final energy E2.
+    """Return the final specific orbital energy.
 
     Parameters
     ----------
     v2Mag : float
-        Magnitude of the outgoing velocity vector.
+        Outgoing speed (m/s).
     U : float
-        Potential energy U.
+        Specific gravitational potential (m^2/s^2).
 
     Returns
     -------
     float
-        E2
+        Specific orbital energy (m^2/s^2).
     """
     return 0.5 * v2Mag**2 + U
 
 def specific_L2(rABVec, v2Vec):
-    """
-    Angular momentum L2.
+    """Return the magnitude of the final specific angular momentum.
 
     Parameters
     ----------
     rABVec : float
-        Separation vector between bodies A and B.
+        Separation vector (m).
     v2Vec : float
-        Outgoing velocity vector.
-    muA : float
-        Gravitational parameter associated with body A (μ_A).
+        Outgoing velocity vector (m/s).
 
     Returns
     -------
     float
-        L2
+        Specific angular momentum (m^2/s).
     """
     return np.linalg.norm(np.cross(rABVec, v2Vec))
 
 
 def a_e(muA, specE2, specL2):
-    """
-    Semi-major axis a.
+    """Return semi-major axis and eccentricity from orbital energy and momentum.
 
     Parameters
     ----------
     muA : float
-        Gravitational parameter associated with body A (μ_A).
+        Standard gravitational parameter (m^3/s^2).
     specE2 : float
-        Final energy E2.
-    L2 : float
-        Angular momentum L2.
+        Specific orbital energy (m^2/s^2).
+    specL2 : float
+        Specific angular momentum (m^2/s).
 
     Returns
     -------
     float
-        a
+        Semi-major axis (m) and eccentricity.
     """
     a = - muA / (2*specE2)
     e = np.sqrt(1 - (specL2**2) / (muA * a))
     return a, e
 
 def beta_2(L_vec, vBVec, rABVec):
-    """
-    Out-of-plane angle β2.
+    """Return the inclination between the outgoing orbit and body B's orbit.
 
     Parameters
     ----------
-    L2 : float
-        Angular momentum L2.
-    a : float
-        Semi-major axis a.
-    e : float
-        Eccentricity e.
+    L_vec : numpy.ndarray
+        Outgoing specific angular-momentum vector.
+    vBVec : numpy.ndarray
+        Orbital velocity vector of body B (m/s).
+    rABVec : numpy.ndarray
+        Separation vector between bodies A and B (m).
 
     Returns
     -------
     float
-        β2
+        Relative inclination (degrees).
     """
     L_mag = np.linalg.norm(L_vec)
     # Body B's angular momentum (circular orbit in xy-plane)
@@ -760,38 +755,36 @@ def beta_2(L_vec, vBVec, rABVec):
     return rel_inclination_deg
 
 def annular_cross_section(b_min, b_max):
-    """
-    Geometric cross-section of an annulus between two impact parameters.
+    """Return the area between two impact-parameter radii.
 
     Parameters
     ----------
     b_min : float
-        Minimum impact parameter.
+        Inner radius (units of length).
     b_max : float
-        Maximum impact parameter.
+        Outer radius (units of length).
 
     Returns
     -------
     float
-        σ_cap
+        Area (units of length squared).
     """
     return np.pi * (b_max**2 - b_min**2)
 
 def capture_cross_section_MC(b, n_sampled):
-    """
-    Monte Carlo estimate of capture cross-section σ_cap.
+    """Estimate capture cross-section from sampled impact parameters.
 
     Parameters
     ----------
-    b_au : float
-        Maximum impact parameter in astronomical units.
+    b : array-like
+        Sampled impact parameters in meters.
     n_sampled : int
         Number of Monte Carlo samples.
 
     Returns
     -------
     float
-        σ_cap
+        Estimated cross-section in AU^2.
     """
     b_au = (np.array(b)*u.m).to(u.au)  # Convert b from meters to astronomical units
     return 2 * np.pi * (np.max(b_au)-np.min(b_au)) * np.sum(b_au) / n_sampled
@@ -800,28 +793,27 @@ def _capture_cross_section_contributions(b_mins, b_maxs, b_cap):
     """Return trajectory contributions in au^2 from impact parameters in m."""
     b_mins_au = (np.asarray(b_mins) * u.m).to(u.au)  # [au]
     b_maxs_au = (np.asarray(b_maxs) * u.m).to(u.au)  # [au]
-    return np.pi * (b_maxs_au**2 - b_mins_au**2)
+    return annular_cross_section(b_mins_au, b_maxs_au)
 
 
 def capture_cross_section(b_mins, b_maxs, b_cap, n_sampled):
-    """
-    Monte Carlo estimate of capture cross-section σ_cap.
+    """Estimate capture area from sampled impact-parameter bounds.
 
     Parameters
     ----------
-    b_mins_au : float
-        Minimum impact parameter in astronomical units.
-    b_maxs_au : float
-        Maximum impact parameter in astronomical units.
-    b_cap_au : float
-        Captured impact parameter in astronomical units.
+    b_mins : array-like
+        Lower impact-parameter bounds for the samples (m).
+    b_maxs : array-like
+        Upper impact-parameter bounds for the samples (m).
+    b_cap : array-like
+        Accepted for compatibility, but not used in this estimate.
     n_sampled : int
-        Number of Monte Carlo samples.
+        Number of sampled trajectories.
 
     Returns
     -------
-    float
-        σ_cap
+    tuple
+        Per-sample area contributions and their mean, in AU^2.
     """
     contrib = _capture_cross_section_contributions(b_mins, b_maxs, b_cap)  # [au^2]
 
@@ -899,10 +891,11 @@ def gauss_legendre_integral(F, vmin, vmax, n_points=16):
     return 0.5 * (vmax - vmin) * np.sum(w * F_vals)
 
 def dict_to_sorted_arrays(occ, key1, key2):
+    """Return 1D arrays of the requested fields, sorted by key1 and filtered to positive key2 values."""
     pairs = [
-        (d['v_inf_au_yr'], d[key])
+        (d[key1], d[key2])
         for d in occ.values()
-        if d[key] > 0
+        if d[key2] > 0
     ]
     pairs.sort(key=lambda x: x[0])
     v_arr  = np.array([p[0] for p in pairs])
@@ -919,17 +912,24 @@ def integral_from_grid(v_grid, F_grid, vmin, vmax, n_points=None):
     return gauss_legendre_integral(F_interp, vmin=vmin, vmax=vmax, n_points=n_points)
 
 def integrate_gauss_legendre(x, y, n=100, exclude_zeros=False):
-    """
-    Integrate y(x) over x using Gauss-Legendre quadrature.
+    """Integrate linearly interpolated samples with Gauss-Legendre quadrature.
 
-    - x: 1D array of sample positions (monotonic not required; will be sorted)
-    - y: 1D array of function values at x
-    - n: number of quadrature points (typ. 8-64)
+    Parameters
+    ----------
+    x : array-like
+        Sample positions paired with ``y``. They need not be sorted.
+    y : array-like
+        Function values at the positions in ``x``.
+    n : int, default=100
+        Number of quadrature nodes.
+    exclude_zeros : bool, default=False
+        If true, discard samples whose ``y`` value is zero.
 
-    Implementation notes:
-    - We sort x and y together and drop NaNs.
-    - We linearly interpolate y(x) to evaluate at the Gauss-Legendre nodes.
-    - Interval is [xmin, xmax]. If less than 2 points, returns 0.
+    Returns
+    -------
+    float
+        Approximate integral from the smallest to largest retained position.
+        Returns zero when fewer than two finite sample pairs remain.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -947,18 +947,10 @@ def integrate_gauss_legendre(x, y, n=100, exclude_zeros=False):
     x = x[order]
     y = y[order]
 
-    a = x[0]
-    b = x[-1]
-    # Get nodes and weights on [-1,1]
-    xi, wi = leggauss(n)
-    # Map nodes to [a,b]
-    xm = 0.5*(b + a)
-    xr = 0.5*(b - a)
-    x_nodes = xm + xr * xi
-    # Interpolate y at nodes
-    y_nodes = np.interp(x_nodes, x, y)
-    # Integral over [a,b]
-    return xr * np.sum(wi * y_nodes)
+    def interpolate(values):
+        return np.interp(values, x, y)
+
+    return gauss_legendre_integral(interpolate, x[0], x[-1], n_points=n)
 
 def equation(b, v1primeVec, v1primeMag, vBVec, muB, phi, potential_energy, rclose):
     # Returns positive when GW loss < KE (no capture)
@@ -973,13 +965,10 @@ def equation(b, v1primeVec, v1primeMag, vBVec, muB, phi, potential_energy, rclos
 def compute_b_max(limit_in_m, b_min,
                    v1primeVec, v1primeMag, vBVec, muB, phi,
                    potential_energy, rclose):
-    """
-    Find maximum b where |GW energy loss| ≥ kinetic energy
-    
-    At b_min: GW loss is very large (close encounter) → equation < 0
-    As b increases: GW loss decreases → equation approaches 0 then becomes positive
-    
-    We want the b where equation = 0 (transition point)
+    """Find the upper impact-parameter bound from the capture energy condition.
+
+    If the condition is already positive at ``b_min``, return ``b_min``. If it
+    never crosses zero before ``limit_in_m``, return zero.
     """
     # Check if capture is possible at b_min
     eq_at_bmin = equation(b_min, v1primeVec, v1primeMag, vBVec, muB, phi, potential_energy, rclose)
@@ -1029,11 +1018,9 @@ def rodrigues_rotate(v, k, angle):
     return Rotation.from_rotvec(k * angle).apply(v)
 
 def exit_point_from_scatter(v1primeMag, v1primeVec, bVec, muB, rClose, b):
-    """
-    Returns r_exit (3-vector) in the B frame.
+    """Return the trajectory's exit position at rClose in body B's frame.
 
-    Provide either impact parameter b or deflection angle psi.
-    v1, v2 are asymptotic velocities (3-vectors).
+    The path is determined from the incoming velocity and impact parameter.
     """
     a_hyp = -muB / v1primeMag**2  # negative for hyperbola
     e = np.sqrt(1.0 + (b * v1primeMag**2 / muB)**2)
@@ -1072,9 +1059,43 @@ def cartesian_to_spherical(x):
     phi = np.arctan2(x[1], x[0])  # azimuthal angle
     return r, theta, phi
 
+def _normal_confidence_multiplier(conf):
+    if np.isclose(conf, 0.68):
+        return 1.0
+    if np.isclose(conf, 0.95):
+        return 1.96
+
+    from scipy.stats import norm
+
+    return norm.ppf(0.5 + conf / 2)
+
+
 def capture_cross_section_and_error(
     b_cap, b_mins, b_maxs, n_sampled, conf=0.95
     ):
+    """Estimate capture area and its uncertainty from sampled impact bounds.
+
+    Parameters
+    ----------
+    b_cap : array-like
+        Retained for compatibility. The estimate uses ``b_mins`` and
+        ``b_maxs`` instead.
+    b_mins, b_maxs : array-like
+        Lower and upper impact-parameter bounds for each sampled trajectory (m).
+    n_sampled : int
+        Number of sampled trajectories.
+    conf : float, default=0.95
+        Confidence level for the symmetric normal interval.
+
+    Returns
+    -------
+    sigma_hat : float
+        Mean capture cross-section (au^2).
+    se : float
+        Standard error of the mean cross-section (au^2).
+    ci : tuple of float
+        Lower and upper confidence bounds (au^2).
+    """
     X_cap = _capture_cross_section_contributions(b_mins, b_maxs, b_cap).to_value(u.au**2)  # [au^2]
 
     S1 = np.sum(X_cap)
@@ -1084,36 +1105,33 @@ def capture_cross_section_and_error(
 
     se = np.sqrt((S2 - S1**2 / n_sampled) / (n_sampled * (n_sampled - 1)))
 
-    if np.isclose(conf, 0.68):
-        z = 1.0
-    elif np.isclose(conf, 0.95):
-        z = 1.96
-    else:
-        from scipy.stats import norm
-        z = norm.ppf(0.5 + conf / 2)
-
+    z = _normal_confidence_multiplier(conf)
     ci = (sigma_hat - z * se, sigma_hat + z * se)
 
     return sigma_hat, se, ci
 
-def rate_and_error(cap_rate, sigma_hat, sigma_se, conf=[0.68, 0.95]):
-    """
+def rate_and_error(cap_rate, sigma_hat, sigma_se, conf=0.95):
+    """Propagate cross-section uncertainty to capture rates.
+
     Parameters
     ----------
-    v : float
-        Impact parameter.
-    sigma_hat : float
-        Estimated capture cross section.
-    conf : float
-        Confidence level, default 0.95.
+    cap_rate : array-like
+        Capture rates associated with the cross sections.
+    sigma_hat : array-like
+        Estimated capture cross sections.
+    sigma_se : array-like
+        Standard errors of the estimated cross sections.
+    conf : float, default=0.95
+        Confidence level for the symmetric normal interval.
+
     Returns
     -------
-    mean_rate : float
-        Mean capture rate.
-    se : float
-        Standard error of the mean.
-    ci : tuple
-        Symmetric normal-approx confidence interval.
+    mean_rate : numpy.ndarray
+        Capture rates as an array.
+    se : numpy.ndarray
+        Rate errors scaled by the rate-to-cross-section ratio.
+    ci : tuple of numpy.ndarray
+        Lower and upper confidence bounds.
     """
     # v_inf_au_yr = np.asarray(v_inf_au_yr, dtype=float)
     # vdm_au_yr = (220e3*u.m/u.s).to(u.au/u.yr).value
@@ -1122,15 +1140,33 @@ def rate_and_error(cap_rate, sigma_hat, sigma_se, conf=[0.68, 0.95]):
     sigma_hat = np.asarray(sigma_hat)
     Ak = cap_rate / sigma_hat  # Assuming cap_rate is proportional to sigma_hat, we can estimate the proportionality constant Ak
     se = Ak * sigma_se
-    z = 1.0 if np.isclose(conf, 0.68) else 1.96 if np.isclose(conf, 0.95) else None
-    if z is None:
-        from scipy.stats import norm
-        z = norm.ppf(0.5 + conf / 2)
+    z = _normal_confidence_multiplier(conf)
     ci = (mean_rate - z * se, mean_rate + z * se)
 
     return mean_rate, se, ci
 
 def bootstrap_rmst(times, events, tau_max, rng, n_boot=2000):
+    """Estimate restricted mean survival time from bootstrap resamples.
+
+    Parameters
+    ----------
+    times : array-like
+        Event or censoring durations, in the same units as ``tau_max``.
+    events : array-like
+        Event indicators passed to Lifelines.
+    tau_max : float
+        Upper time limit for the restricted mean.
+    rng : numpy.random.Generator
+        Generator used to draw bootstrap samples.
+    n_boot : int, default=2000
+        Number of bootstrap resamples.
+
+    Returns
+    -------
+    dict
+        Bootstrap mean, sample standard deviation, 95% percentile interval, and
+        the resampled restricted means.
+    """
 
     from lifelines import KaplanMeierFitter
     from lifelines.utils import restricted_mean_survival_time
@@ -1179,6 +1215,36 @@ def gl_effective_weights(x, n=100, exclude_zeros=False):
     return alpha
 
 def integrated_rate_and_error(x, rate_per_v, rate_err_per_v, n_gl=100, q_vals=None):
+    """Integrate rate values and propagate independent pointwise errors.
+
+    Parameters
+    ----------
+    x : array-like
+        Grid coordinates paired with the rate values.
+    rate_per_v : array-like
+        Rate values at the grid coordinates.
+    rate_err_per_v : array-like
+        Standard errors corresponding to ``rate_per_v``.
+    n_gl : int, default=100
+        Number of Gauss-Legendre nodes used to form the integration weights.
+    q_vals : array-like or None, default=None
+        Optional quantiles of the rate values, weighted by the integration
+        weights.
+
+    Returns
+    -------
+    total_rate : float
+        Integrated rate.
+    total_err : float
+        Integrated standard error, assuming errors at distinct grid points are
+        independent.
+    ci68, ci95 : tuple of float
+        Symmetric intervals at one and 1.96 standard errors, respectively.
+    alpha : numpy.ndarray
+        Effective quadrature weights corresponding to ``x``.
+    qvals : numpy.ndarray or None
+        Requested weighted quantiles, or ``None`` when ``q_vals`` is omitted.
+    """
     x = np.asarray(x, dtype=float)
     rate_per_v = np.asarray(rate_per_v, dtype=float) 
     rate_err_per_v = np.asarray(rate_err_per_v, dtype=float)
@@ -1192,29 +1258,31 @@ def integrated_rate_and_error(x, rate_per_v, rate_err_per_v, n_gl=100, q_vals=No
     total_rate = np.sum(alpha * rate_per_v)
     total_err = np.sqrt(np.sum((alpha * rate_err_per_v)**2))
 
-    ci68 = (total_rate - total_err, total_rate + total_err)
-    ci95 = (total_rate - 1.96 * total_err, total_rate + 1.96 * total_err)
+    z68 = _normal_confidence_multiplier(0.68)
+    z95 = _normal_confidence_multiplier(0.95)
+    ci68 = (total_rate - z68 * total_err, total_rate + z68 * total_err)
+    ci95 = (total_rate - z95 * total_err, total_rate + z95 * total_err)
 
     return total_rate, total_err, ci68, ci95, alpha, qvals if q_vals is not None else None
 
 def weighted_quantile(values, quantiles, weights=None):
-    values = np.asarray(values, dtype=float)
-    q = np.asarray(quantiles, dtype=float)
+    """Compute unweighted quantiles with NumPy.
+
+    With weights, retain finite values with positive finite weights, clip
+    quantiles to [0, 1], and pass them to TDpy's weighted-quantile function.
+    """
+    values_array = np.asarray(values, dtype=float)
+    quantile_values = np.asarray(quantiles, dtype=float)
 
     if weights is None:
-        return np.quantile(values, q)
+        return np.quantile(values_array, quantile_values)
 
-    w = np.asarray(weights, dtype=float)
-    mask = np.isfinite(values) & np.isfinite(w) & (w > 0)
-    v = values[mask]
-    w = w[mask]
-
-    idx = np.argsort(v)
-    v = v[idx]
-    w = w[idx]
-
-    cdf = np.cumsum(w) / np.sum(w)
-    return np.interp(q, cdf, v)
+    sample_weights = np.asarray(weights, dtype=float)
+    valid = np.isfinite(values_array) & np.isfinite(sample_weights) & (sample_weights > 0)
+    return _weighted_quantile(
+        values_array[valid], np.clip(quantile_values, 0.0, 1.0),
+        sample_weight=sample_weights[valid],
+    )
 def dm_density_profile_milkyway(r):
     """
     Einasto density profile for the Milky Way.
@@ -1325,19 +1393,24 @@ def _hernquist_density(M_bulge, r_b, r):
 
 def baryonic_mass_and_velocity_milkyway(r, r_in=None, return_components=False):
     """
-    Baryonic mass profile for the Milky Way (disk + bulge + dust + gas).
-
-    Includes exponential disk, Hernquist bulge, warm dust, cold dust, HI gas, and H2 gas.
+    Return enclosed baryonic mass and circular speed for the Milky Way.
 
     Parameters
     ----------
     r : float or array-like
-        Galactocentric radius in kpc.
+        Galactocentric radius (kpc).
+    r_in : float or None, default=None
+        Inner radius (kpc) for the enclosed-mass calculation. It does not affect
+        the circular-speed calculation.
+    return_components : bool, default=False
+        If true, also return the enclosed masses of the six modeled components.
 
     Returns
     -------
-    float or array-like
-        Baryonic density at radius r in units of M_sun/kpc^3.
+    tuple
+        Total enclosed baryonic mass (M_sun) and circular speed (km/s). When
+        ``return_components`` is true, the tuple also includes the component
+        masses in disk, bulge, warm dust, cold dust, HI, and H2 order.
     """
     
     # r = np.asarray(r, dtype=float) * u.kpc
@@ -1351,8 +1424,8 @@ def baryonic_mass_and_velocity_milkyway(r, r_in=None, return_components=False):
     disk_velocity = circular_velocity_disk(r, M_disc, R_d)  
     
     # ===== BULGE (Hernquist profile) =====
-    M_bulge = 1.55e10 * u.M_sun  # Total bulge mass
-    a_bulge = 0.70 * u.kpc  # Scale radius
+    M_bulge = _MILKY_WAY_BULGE_MASS_SOLAR * u.M_sun  # [M_sun]
+    a_bulge = _MILKY_WAY_BULGE_SCALE_RADIUS_KPC * u.kpc  # [kpc]
     from functools import partial
 
     bulge_density_func = partial(_hernquist_density, M_bulge, a_bulge)
@@ -1441,9 +1514,8 @@ def circular_velocity_spherical(r, density_profile):
     float
         Circular velocity at radius r in km/s (unitless).
     """
-    G = const.G.to(u.kpc**3 / (u.M_sun * u.yr**2))  # Keep units
     M_enclosed = mass_enclosed_spherical(r, density_profile)  # returns unitless M_sun
-    v_sq = G * (M_enclosed * u.M_sun) / (r * u.kpc)
+    v_sq = _G_KPC3_PER_MSUN_YR2 * (M_enclosed * u.M_sun) / (r * u.kpc)
     v_circ = np.sqrt(v_sq).to(u.km / u.s)
     return v_circ.value
 
@@ -1466,11 +1538,10 @@ def circular_velocity_disk(R, M, Rd):
         Circular velocity at radius R in km/s.
     """
     from scipy.special import iv, kv
-    G = const.G.to(u.kpc**3 / (u.M_sun * u.yr**2))  # Keep units
     R_kpc = R * u.kpc  # Convert R to quantity with units
     y = R_kpc / (2 * Rd)
     Sigma0 = M / (2 * np.pi * Rd**2)
-    v_sq = 4 * np.pi * G * Sigma0 * Rd * y.value**2 * (
+    v_sq = 4 * np.pi * _G_KPC3_PER_MSUN_YR2 * Sigma0 * Rd * y.value**2 * (
         iv(0, y.value) * kv(0, y.value)
         - iv(1, y.value) * kv(1, y.value)
     )
@@ -1806,6 +1877,13 @@ def star_number_at_r(r, dr, M_star=1.0, fraction = 1.0):
     N_disk = (M_disk / M_star) * fraction
     return N_bulge + N_disk
 
+def _local_stellar_count_reference(M_star):
+    rho_100 = 0.025  # [M_sun/pc^3], Lutsenko 2025
+    r_100 = 100  # [pc]
+    M_100 = rho_100 * (4 / 3) * np.pi * r_100**3
+    return M_100 / M_star, r_100
+
+
 def star_number_at_ring(r, M_star=1.0, fraction = 1.0):
     """
     Estimate the number of stars in a ring at radius r with width dr, given a stellar mass M_star.
@@ -1822,15 +1900,7 @@ def star_number_at_ring(r, M_star=1.0, fraction = 1.0):
     N_stars : float
         Estimated number of stars in the ring at radius r.
     """
-    # Stellar density profile (e.g., exponential disk)
-    # For simplicity, we can use an exponential disk model: rho(r) = rho_0 * exp(-r/R_d)
-    # where rho_0 is the central density and R_d is the scale length.
-    
-    rho_100 = 0.025  # Central stellar density in M_sun/pc^3 at solar neighborhood sphere of r=100pc Lutsenko 2025
-    r_100 = 100 # pc
-
-    M_100 = rho_100 * (4/3) * np.pi * (r_100)**3  # Mass in M_sun within 100 pc sphere
-    N_100 = M_100 / M_star  # Number of stars in 100 pc sphere
+    N_100, r_100 = _local_stellar_count_reference(M_star)
     
     # Convert r to pc for density calculation
     ring_at_SN = 2 * np.pi * r * 1000  # circumference of ring at solar neighborhood in pc
@@ -1858,22 +1928,14 @@ def star_number_at_disc(r_in, r_out, M_star=1.0, fraction = 1.0):
     N_stars : float
         Estimated number of stars in the disc between r_in and r_out.
     """
-    # Stellar density profile (e.g., exponential disk)
-    # For simplicity, we can use an exponential disk model: rho(r) = rho_0 * exp(-r/R_d)
-    # where rho_0 is the central density and R_d is the scale length.
-    
-    rho_100 = 0.025  # Central stellar density in M_sun/pc^3 at solar neighborhood sphere of r=100pc Lutsenko 2025
-    r_100 = 100 # pc
-
-    M_100 = rho_100 * (4/3) * np.pi * (r_100)**3  # Mass in M_sun within 100 pc sphere
-    N_100 = M_100 / M_star  # Number of stars in 100 pc sphere
+    N_100, r_100 = _local_stellar_count_reference(M_star)
     
     # Convert radii to pc for density calculation
     r_in_pc = r_in * 1000  # kpc to pc
     r_out_pc = r_out * 1000  # kpc to pc
     
-    area_disc = np.pi * (r_out_pc**2 - r_in_pc**2)  # Area of the disc in pc^2
-    N_stars = N_100 * (area_disc / (np.pi * r_100**2)) * fraction  # Scale number of stars by area ratio and fraction
+    area_disc = annular_cross_section(r_in_pc, r_out_pc)
+    N_stars = N_100 * (area_disc / area_of_circle(r_100)) * fraction
     return N_stars
 
 def star_number_galactic_bulge(r, M_star=1.0, fraction = 1.0):
@@ -1895,8 +1957,8 @@ def star_number_galactic_bulge(r, M_star=1.0, fraction = 1.0):
     # Bulge density profile (e.g., Hernquist profile)
     # For simplicity, we can use a Hernquist profile: rho(r) = (M_bulge * r_b) / (2 * pi * r * (r_b + r)^3)
     
-    M_bulge = 1.55e10  # Total bulge mass in M_sun Bland-hawthorn2016
-    a_bulge = 0.70  # Scale radius in kpc
+    M_bulge = _MILKY_WAY_BULGE_MASS_SOLAR  # [M_sun]
+    a_bulge = _MILKY_WAY_BULGE_SCALE_RADIUS_KPC  # [kpc]
     
     # Convert r to kpc for density calculation
     r_kpc = r  # already in kpc

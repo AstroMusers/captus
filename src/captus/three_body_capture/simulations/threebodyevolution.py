@@ -132,7 +132,7 @@ class ThreeBodyEvolution:
 
             except KeyboardInterrupt:
                 pool.terminate()
-                print("\nInterrupted by user — terminating workers.")
+                print("\nInterrupted by user – terminating workers.")
                 raise
 
         # Ensure final newline after progress bar

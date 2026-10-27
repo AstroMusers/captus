@@ -208,7 +208,7 @@ def sample_equal_mass_unbound_encounter(
     components are drawn from one isotropic Maxwellian with the same dispersion.
     The positions are shifted backward by 15 interaction radii divided by the
     slowest body's speed. Bound initial pairs and nonpositive total energy are
-    rejected. This is a reproducible toy scattering setup, not a cluster model.
+    rejected. The setup isolates one encounter and omits the surrounding cluster.
     """
 
     mass = _positive_scalar_quantity(planet_mass, u.kg, "planet_mass")
@@ -453,9 +453,10 @@ def infer_binary_planet_rate_normalization_pcat(
 ) -> dict[str, Any]:
     """Infer a rate-normalization factor with PCAT's fixed-dimensional sampler.
 
-    The likelihood is Poisson for ``observed_count`` over the supplied volume
-    and exposure time. This is a generic count model; survey selection,
-    disruption, and contamination must be modeled before using real data.
+    The Poisson likelihood compares ``observed_count`` with the expected count
+    from the supplied rate density, volume, exposure time, and fitted
+    normalization. It omits survey selection, binary disruption, and
+    contamination.
     """
 
     try:

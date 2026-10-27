@@ -35,9 +35,9 @@ python -m pip install -e '.[inference]'
 ```
 
 The notebook `notebooks/binary_planet_three_body_capture.ipynb` walks through
-the rate calculation and PCAT posterior with synthetic counts. The numbers are
-there to make the calculation concrete. Applying it to a real population also
-requires selection, disruption, and contamination models.
+the rate calculation and PCAT posterior with synthetic counts. A rate for a
+real planet population would also depend on survey selection, binary disruption,
+and contamination.
 
 ## Installation
 

@@ -242,7 +242,7 @@ def _plot_results(
     axes[1, 1].legend(frameon=True, facecolor="white", framealpha=1.0, fontsize=8)
     axes[1, 1].grid(False)
 
-    figure.suptitle("Synthetic Roman-like binary microlensing: PCAT model comparison")
+    figure.suptitle("Synthetic Roman-like binary microlensing and PCAT model comparison")
     figure.text(
         0.5,
         -0.012,

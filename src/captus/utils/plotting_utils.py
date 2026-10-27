@@ -4,6 +4,7 @@ from itertools import groupby
 from operator import itemgetter
 import re
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 from captus.utils.formatting import sci_notation_latex
 
 plt.rcParams['text.usetex'] = True
@@ -85,12 +86,7 @@ def get_stable_regions(stable_mask, T):
 
     return total_duration, longest_duration, segments
 
-def format_to_1sf(x, pos=None):
-    """Format a number to 1 significant figure for axis labels."""
-    if x == 0:
-        return "0"
-    else:
-        return f"{x:.1g}"
+format_to_1sf = FormatStrFormatter("%.1g")
 
 def rescale_ticks(x, pos):
     """Rescale ticks to percentage format."""

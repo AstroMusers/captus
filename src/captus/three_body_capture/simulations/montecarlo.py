@@ -39,7 +39,7 @@ class MonteCarloSimulation:
         self.rB = self.sys_par['rB']
         self.eB = self.sys_par['eB']
         self.iB = self.sys_par['iB']
-        self.areaB = np.pi * self.rB**2
+        self.areaB = calcs.area_of_circle(self.rB)
         self.vBMag = self.sys_par['vB']
         self.v_escB = calcs.v_esc(self.muB, self.rB)
 

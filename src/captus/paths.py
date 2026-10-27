@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from tdpy.paths import RepositoryPaths
+
 
 PATH_ENV_VAR = "CAPTUS_PATH"
 LEGACY_PATH_ENV_VAR = "CAPTUS_REPO_ROOT"
@@ -10,13 +12,13 @@ os.environ.setdefault(
     os.environ.get(LEGACY_PATH_ENV_VAR, str(DEFAULT_REPOSITORY_PATH)),
 )
 
+_REPOSITORY_PATHS = RepositoryPaths(PATH_ENV_VAR, DEFAULT_REPOSITORY_PATH)
+
 
 def get_repository_path() -> Path:
-    path_value = os.environ.get(PATH_ENV_VAR) or os.environ.get(LEGACY_PATH_ENV_VAR)
-    if not path_value or not path_value.strip():
-        path_value = str(DEFAULT_REPOSITORY_PATH)
-        os.environ[PATH_ENV_VAR] = path_value
-    return Path(path_value).expanduser().resolve()
+    if not os.environ.get(PATH_ENV_VAR) and os.environ.get(LEGACY_PATH_ENV_VAR):
+        os.environ[PATH_ENV_VAR] = os.environ[LEGACY_PATH_ENV_VAR]
+    return _REPOSITORY_PATHS.get_repository_path()
 
 
 def get_data_path() -> Path:

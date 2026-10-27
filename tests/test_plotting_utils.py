@@ -4,6 +4,13 @@ import pytest
 from captus.utils.plotting_utils import advanced_stats
 
 
+@pytest.mark.parametrize("value", [0.0, -0.012, 1.234, 9876.0])
+def test_one_significant_figure_formatter_matches_python_format(value):
+    from captus.utils.plotting_utils import format_to_1sf
+
+    assert format_to_1sf(value, 0) == f"{value:.1g}"
+
+
 @pytest.mark.parametrize('dtype', ['=f4', '=f8', '<f4', '<f8', '>f4', '>f8'])
 def test_advanced_stats_accepts_byte_orders_without_mutating_input(dtype):
     values = np.array([0.0, 0.0, 0.0, 5.0, 5.0, 5.0, 5.0], dtype=dtype)

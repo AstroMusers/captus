@@ -22,60 +22,49 @@ def _resolve_repo_root() -> str:
     
 def create_analysis_latex_table(analysis_list, rows, row_labels, ci_lists=None, unit_change=None, fmt='.6f', cols_labels=None, filename=None):
     """
-    Create a LaTeX table from the catalog data using pytextable.
-    - cols: list of column names (keys in catalog[v]['occurrences'])
-    - rows: list of velocity keys (e.g., ['v17', 'v18'])
-    - row_labels: list of labels for the rows
-    - ci_lists: list of confidence interval lists
-    - cols_labels: list of labels for the columns
-    - filename: output .tex file path
+    Create a LaTeX table with one column per analysis and labeled rows.
+
+    Rows contain catalog keys or nested key paths. Optional ci_lists entries
+    name confidence intervals in each catalog's errors dictionary. Values and
+    interval endpoints share the corresponding unit_change factor. When given,
+    filename receives the returned table text.
     """
+    from tdpy.verbosity import print
+
+    if len(row_labels) != len(rows):
+        raise ValueError('row_labels length must match rows length')
+    if ci_lists is None:
+        ci_lists = [None] * len(rows)
+    if unit_change is None:
+        unit_change = [None] * len(rows)
+    if len(ci_lists) != len(rows) or len(unit_change) != len(rows):
+        raise ValueError('ci_lists and unit_change length must match rows length')
+    if cols_labels is not None and len(cols_labels) != len(analysis_list):
+        raise ValueError('cols_labels length must match analysis_list length')
     if cols_labels is None:
-        cols_labels_list = []
-        for l in analysis_list:
-            catalog = l.results_dictionary
-            if cols_labels is None:
-                labl = catalog['mC'] / const.M_sun.value
-                print(f'Adding column label: {labl:.0e} M_sun')
-                cols_labels_list.append(fr'{sci_notation_latex(labl)} M$_{{\odot}}$')
-        cols_labels = cols_labels_list
+        cols_labels = [
+            fr'{sci_notation_latex(analysis.results_dictionary["mC"] / const.M_sun.value)} M$_{{\odot}}$'
+            for analysis in analysis_list
+        ]
     rows_data = []
-    for unit_change, v, vl in zip(unit_change, rows, row_labels):
-        row_data = []
-        if  unit_change is not None:
-            uc = unit_change
-        else:
-            uc = 1
-        print(f'Processing row: {vl} with key: {v}')
-        # row_data.append(vl)
-        for l in analysis_list:
-            catalog = l.results_dictionary
-            # if len(v) == 1:
-            #     d = sci_notation_latex(catalog[v[0]])
-            #     row_data.append(d)
-            # elif len(v) == 2:
-            #     d = sci_notation_latex(catalog[v[0]][v[1]])
-            #     row_data.append(d)
-            # elif len(v) == 3:
-            #     d = sci_notation_latex(catalog[v[0]][v[1]][v[2]])
-            #     row_data.append(d)
-            if len(v) == 1:
-                d = catalog[v[0]]*uc
-            elif len(v) == 2:
-                d = catalog[v[0]][v[1]]*uc
-            elif len(v) == 3:
-                d = catalog[v[0]][v[1]][v[2]]*uc
-
-            if ci_list is not None:
-                ci_key = ci_list[rows.index(v)]
-                ci_value = catalog['errors'][ci_key]
-                row_data.append(f'{d:.2e} ({np.round(ci_value[0], 2):.2e}, {ci_value[1]:.2e})')
-
+    for keys, label, ci_key, conversion in zip(rows, row_labels, ci_lists, unit_change):
+        factor = 1 if conversion is None else conversion
+        row_data = [label]
+        for analysis in analysis_list:
+            catalog = analysis.results_dictionary
+            value = _get_nested(catalog, [keys] if isinstance(keys, str) else keys) * factor
+            if ci_key is None:
+                row_data.append(format(value, fmt))
+            else:
+                lower, upper = np.asarray(catalog['errors'][ci_key]) * factor
+                row_data.append(f'{value:.2e} ({lower:.2e}, {upper:.2e})')
         rows_data.append(row_data)
-    print(f'Rows data for table: {rows_data}')
-    print(f'Column labels for table: {cols_labels_list}')
-    table = ptx.tostring(rows_data,fmt=fmt, header=cols_labels)
-    return table             
+    table = ptx.tostring(rows_data, header=[''] + list(cols_labels))
+    if filename is not None:
+        print(f'Writing to {filename}...')
+        with open(filename, 'w', encoding='utf-8') as output:
+            output.write(table)
+    return table
    
 
 
@@ -419,7 +408,7 @@ def get_shell_sum_Neq_and_params(analysis, r_edges, M_star=1.0, fraction=1.0, sa
         r_in = r_edges[i]
         r_out = r_edges[i + 1]
         dr_i = dr_array[i]
-
+        a_list = []
         
         if isinstance(analysis, tuple):
             for a1, a2 in zip(analysis[0], analysis[1]):

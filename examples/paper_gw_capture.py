@@ -91,7 +91,7 @@ def main() -> None:
     for axis, grid, title, label in zip(axes, grids, titles, labels):
         _plot_positive_grid(axis, masses_msun, velocities_kms, grid, label)
         axis.set_title(title)
-    figure.suptitle("Typical neutron star: 1.4 solar masses, 11 km, r = 8 kpc")
+    figure.suptitle("Typical neutron star with 1.4 solar masses, 11 km radius, and r = 8 kpc")
     if len(grids) == 2:
         print("PBHBOUNDS_PATH is unset; skipping the equilibrium-abundance panel.")
 

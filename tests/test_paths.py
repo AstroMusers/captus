@@ -30,3 +30,11 @@ def test_legacy_repository_path_remains_a_fallback(tmp_path, monkeypatch):
 
     assert module.get_repository_path() == tmp_path.resolve()
     assert Path(os.environ["CAPTUS_PATH"]).resolve() == tmp_path.resolve()
+
+
+def test_empty_primary_path_uses_legacy_path_after_import(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAPTUS_PATH", "")
+    monkeypatch.setenv("CAPTUS_REPO_ROOT", str(tmp_path))
+
+    assert paths.get_repository_path() == tmp_path.resolve()
+    assert paths.get_data_path() == tmp_path.resolve() / "data"
