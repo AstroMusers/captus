@@ -214,7 +214,12 @@ def test_rate_normalization_inference_delegates_to_pcat(monkeypatch):
     fake_pcat = ModuleType("pcat")
     fake_pcat.__path__ = []
     fake_fixed = ModuleType("pcat.fixed")
+    fake_likelihood = ModuleType("pcat.likelihood")
     calls = {}
+
+    def poisson_log_likelihood(observed, expected, *, include_constant):
+        calls["likelihood_args"] = (observed, expected, include_constant)
+        return observed * math.log(expected) - expected - math.lgamma(observed + 1)
 
     def sample_fixed_chains(*args, **kwargs):
         calls["args"] = args
@@ -222,9 +227,11 @@ def test_rate_normalization_inference_delegates_to_pcat(monkeypatch):
         calls["log_likelihood_value"] = args[1](np.array([1.0]), args[0])
         return np.array([[[0.8], [1.0]], [[1.2], [1.4]]]), np.zeros((2, 2))
 
+    fake_likelihood.poisson_log_likelihood = poisson_log_likelihood
     fake_fixed.sample_fixed_chains = sample_fixed_chains
     monkeypatch.setitem(sys.modules, "pcat", fake_pcat)
     monkeypatch.setitem(sys.modules, "pcat.fixed", fake_fixed)
+    monkeypatch.setitem(sys.modules, "pcat.likelihood", fake_likelihood)
 
     result = infer_binary_planet_rate_normalization_pcat(
         2 / (u.pc**3 * u.yr),
@@ -243,6 +250,7 @@ def test_rate_normalization_inference_delegates_to_pcat(monkeypatch):
     assert calls["args"][0]["observed_count"] == 5
     assert calls["args"][1] is not None
     assert calls["kwargs"]["boolcheckconv"] is False
+    assert calls["likelihood_args"] == pytest.approx((5, 24.0, True))
     assert calls["log_likelihood_value"] == pytest.approx(
         5 * np.log(24.0) - 24.0 - math.lgamma(6)
     )

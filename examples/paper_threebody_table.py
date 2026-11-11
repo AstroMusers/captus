@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from captus.paths import get_visuals_path
+from tdpy.verbosity import print
+from tdpy.verbosity import print
 
 
 PAPER_TABLES = {

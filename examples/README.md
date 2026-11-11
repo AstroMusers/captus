@@ -8,12 +8,12 @@ Jupyter or VS Code with a Python environment where Captus is installed.
 
 `paper_environment.ipynb` recalculates the Milky Way density, circular speed,
 and velocity dispersion in Table 1. A separate seeded Maxwellian draw shows how
-the velocity model behaves in a reproducible toy sample. The paper's reported
+the velocity model behaves in a toy sample. The paper's reported
 results come from the full encounter simulations.
 
 `paper_threebody_table.ipynb` plots selected 8 kpc entries from Table 2 for
 Sun-Jupiter and Beta Pictoris. We transcribe the paper's reported central values
-and 2-sigma uncertainties. Reproducing those estimates requires the separate
+and 2-sigma uncertainties. Generating those estimates requires the separate
 120,000-system encounter archives.
 
 `paper_gw_capture.ipynb` calculates capture cross-section and coalescence-time
@@ -38,12 +38,12 @@ spread, while effective sample size discounts correlated draws. PCAT's
 convergence flag uses finite values, R-hat at most 1.05, and effective sample
 size of at least 200 for every parameter.
 
-From the paper directory, `python reproduce_paper.py --smoke` writes the
+From the paper directory, `python generate_paper.py --smoke` writes the
 Milky Way environment table, an 8-by-8 neutron-star GW-capture figure, the two
 selected Table 2 plots, the PCAT injection-recovery figure and samples, and a
-reproduction manifest. Without `--smoke`, the GW grid uses 100 points per axis
+generation manifest. Without `--smoke`, the GW grid uses 100 points per axis
 and the PCAT run uses the full 15-minute cadence. The Table 2 plots use values
-transcribed from the paper. Reproducing the underlying 120,000-system results
+transcribed from the paper. Generating the underlying 120,000-system results
 requires the original Monte Carlo and REBOUND archives or a new production run.
 The exact three-body notebook workflow is available through the runner's
 explicit `--stages full-notebook` mode. It is excluded from the lightweight

@@ -113,7 +113,6 @@ def round_uncertainty_and_value(value, error, sig_figs_err=None, sc_notation=Fal
             value_scaled,
             error_scaled,
             sig_figs_err=sig_figs_err,
-            sc_notation=False
         )
 
         return val_str, err_str, exponent
@@ -247,7 +246,7 @@ def create_analysis_pandas_table(analysis_list, rows, row_labels, decimal_places
                         mean_str, err_str, exponent = round_uncertainty_and_value(d, ci_value_sym, sig_figs_err=1, sc_notation=True)
                         row_data.append(fr'$({mean_str} \pm {err_str}) \times 10^{{{exponent}}}$')
                     else:
-                        mean_str, err_str = round_uncertainty_and_value(d, ci_value_sym, sig_figs_err=1, sc_notation=False)
+                        mean_str, err_str = round_uncertainty_and_value(d, ci_value_sym, sig_figs_err=1)
                         row_data.append(fr'{mean_str} $\pm$ {err_str}')
 
             else:

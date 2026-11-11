@@ -7,6 +7,8 @@ from matplotlib import rcParams
 import matplotlib as mpl
 from matplotlib.font_manager import FontProperties
 from tdpy.plotting import apply_plot_theme, configure_plot_style, plot_style
+from tdpy.verbosity import print
+from tdpy.verbosity import print
 
 save_directory = os.path.join(os.path.dirname(__file__), '../../results/plots/GW_Capture/')
 os.makedirs(save_directory, exist_ok=True)

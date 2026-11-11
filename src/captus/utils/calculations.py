@@ -1249,7 +1249,7 @@ def integrated_rate_and_error(x, rate_per_v, rate_err_per_v, n_gl=100, q_vals=No
     rate_per_v = np.asarray(rate_per_v, dtype=float) 
     rate_err_per_v = np.asarray(rate_err_per_v, dtype=float)
 
-    alpha = gl_effective_weights(x, n=n_gl, exclude_zeros=False)
+    alpha = gl_effective_weights(x, n=n_gl)
 
     if q_vals is not None:
         # e.g. 16th, 50th, 84th percentile values of rate_per_v
@@ -1711,7 +1711,7 @@ def get_Neq_at_r_f(Mpbh, Neq, ri=None, rf=8, num_points=100):
     'GW-Lensing', 'PBH-EMRIs', '3G-GW-1y', '3G-GW-10y', 'SIGWs', 'OGLE-hint',
     'FL-small', 'GRB-parallax', 'WhiteDwarfmicro', 'Xraylensing-eXTP-proj',
     'GECCO']
-    bounds_result = get_pbh_fraction_bounds(Mpbh, bound_id=bound_ids, return_all_bounds=False)
+    bounds_result = get_pbh_fraction_bounds(Mpbh, bound_id=bound_ids)
     pbh_fractions = [bounds_result['min_fraction'], 1e0]
     # used_bounds_mode = True
     

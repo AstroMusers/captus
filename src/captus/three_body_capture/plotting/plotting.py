@@ -21,6 +21,8 @@ from functools import wraps
 from inspect import Parameter, signature
 from matplotlib.figure import Figure
 from tdpy.plotting import apply_plot_theme, plot_background_colors, plot_style
+from tdpy.verbosity import print
+from tdpy.verbosity import print
 
 
 def _themed_plot(method):

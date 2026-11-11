@@ -14,6 +14,8 @@ from astropy import constants as const
 from matplotlib.colors import LogNorm
 
 from captus.paths import get_visuals_path
+from tdpy.verbosity import print
+from tdpy.verbosity import print
 from captus.gw_capture.simulation import GWCapture
 
 plt.rcParams["text.usetex"] = False

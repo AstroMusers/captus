@@ -15,6 +15,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.special import expit
+from tdpy.verbosity import print
+from tdpy.verbosity import print
 
 from pcat.diagnostics import posterior_convergence
 from pcat.fixed import sample_fixed_chains
@@ -170,7 +172,6 @@ def _fit_model(
         },
     }
 
-
 def _compare_models(fits: dict[str, dict[str, object]]) -> dict[str, float]:
     single_log_evidence = float(fits["single"]["evidence"]["log_evidence"])
     binary_log_evidence = float(fits["binary"]["evidence"]["log_evidence"])
@@ -192,7 +193,7 @@ def _plot_results(
     comparisons: dict[str, dict[str, float]],
     output_path: Path,
 ) -> None:
-    figure, axes = plt.subplots(2, 2, figsize=(9.0, 6.4), layout="constrained")
+    figure, axes = plt.subplots(2, 2, figsize=(7.0, 5.0), layout="constrained")
     cases = ("binary injection", "single-lens null")
     for axis, case, color in zip(axes[0], cases, ("#167D8D", "#C14A36")):
         axis.errorbar(
@@ -202,7 +203,7 @@ def _plot_results(
             fmt=".",
             ms=2,
             lw=0.4,
-            color="#39454C",
+            color="black",
             alpha=0.5,
             label="Synthetic photometry",
             rasterized=True,
@@ -216,8 +217,9 @@ def _plot_results(
             model = _predict_flux(mulens_model, time, parameters, model_name == "binary")
             axis.plot(time, model, color=model_color, ls=linestyle, lw=1.2, label=f"PCAT {model_name} lens")
         axis.set(xlim=(0.0, SURVEY_DURATION), xlabel="Time [day]", ylabel="Relative flux", title=case)
+        axis.title.set_fontsize(10)
         axis.grid(False)
-        axis.legend(frameon=True, facecolor="white", framealpha=1.0, fontsize=8)
+        axis.legend(frameon=True, fancybox=True, facecolor="white", framealpha=1.0, fontsize=10, loc="upper left")
 
     width = 0.34
     positions = np.arange(2)
@@ -229,7 +231,7 @@ def _plot_results(
         axes[1, 0].bar(positions + (index - 0.5) * width, values, width=width, color=color, label=label)
     axes[1, 0].set_xticks(positions, ("Injected binary", "Single-lens null"))
     axes[1, 0].set(ylim=(0.0, 1.0), ylabel="Posterior model probability", title="PCAT evidence comparison")
-    axes[1, 0].legend(frameon=True, facecolor="white", framealpha=1.0, fontsize=8)
+    axes[1, 0].title.set_fontsize(10)
     axes[1, 0].grid(False)
 
     for case, color in zip(cases, ("#167D8D", "#C14A36")):
@@ -238,18 +240,36 @@ def _plot_results(
     axes[1, 1].axvline(INJECTED_COMPANION[0], color="#D29B3D", ls="--", lw=1.2, label="Injected q")
     axes[1, 1].set_xlabel(r"$\log_{10} q$")
     axes[1, 1].set_ylabel("PCAT posterior samples")
-    axes[1, 1].set_title("Binary-lens fit mass ratio")
-    axes[1, 1].legend(frameon=True, facecolor="white", framealpha=1.0, fontsize=8)
+    axes[1, 1].set_title("Binary-lens fit mass ratio", fontsize=10)
+    axes[1, 1].legend(
+        frameon=True,
+        fancybox=True,
+        facecolor="white",
+        framealpha=1.0,
+        fontsize=10,
+        loc="upper right",
+    )
     axes[1, 1].grid(False)
 
-    figure.suptitle("Synthetic Roman-like binary microlensing and PCAT model comparison")
-    figure.text(
-        0.5,
-        -0.012,
-        "Simulated 72-day light curves; companion detection does not identify a primordial origin.",
-        ha="center",
-        fontsize=9,
+    legend_handles, legend_labels = [], []
+    for axis in (axes[1, 0], axes[1, 1]):
+        axis_handles, axis_labels = axis.get_legend_handles_labels()
+        legend_handles.extend(axis_handles)
+        legend_labels.extend(axis_labels)
+    figure.legend(
+        legend_handles,
+        legend_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.24),
+        ncol=3,
+        frameon=True,
+        fancybox=True,
+        facecolor="white",
+        framealpha=1.0,
+        fontsize=10,
     )
+
+    figure.suptitle("Synthetic binary microlensing model comparison with PCAT", fontsize=10)
     print(f"Writing to {_display_output_path(output_path)}...")
     figure.savefig(output_path, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(figure)

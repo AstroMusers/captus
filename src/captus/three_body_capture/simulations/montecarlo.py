@@ -32,8 +32,8 @@ class MonteCarloSimulation:
         # self.muA = self.mA * G
         # self.muB = self.mB * G
         # self.muC = self.mC * G
-        self.muA = calcs.standard_gravitational_parameter(self.mA, self.mC, approx=False)
-        self.muB = calcs.standard_gravitational_parameter(self.mB, self.mC, approx=False)
+        self.muA = calcs.standard_gravitational_parameter(self.mA, self.mC)
+        self.muB = calcs.standard_gravitational_parameter(self.mB, self.mC)
 
         self.aB = self.sys_par['aB']
         self.rB = self.sys_par['rB']
@@ -45,12 +45,12 @@ class MonteCarloSimulation:
 
         self.epsilon = self.sys_par['epsilon']
         self.epsilon_adjust_coeff = self.sys_par['epsilon_adjust_coeff']
-        self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB, approx=False)
+        self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB)
         self.rHill = calcs.hill_radius(self.aB, self.mA, self.mB, self.eB)
 
         while self.rClose > self.rHill:
             self.epsilon *= self.epsilon_adjust_coeff
-            self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB, approx=False)
+            self.rClose = calcs.r_close(self.epsilon, self.muA, self.muB, self.aB)
             self._vprint(f"Adjusted rClose to {self.rClose} to be within Hill radius {self.rHill}, epsilon={self.epsilon}")
 
         self.aC = self.aB - self.rClose
